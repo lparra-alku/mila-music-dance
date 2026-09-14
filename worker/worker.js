@@ -68,6 +68,13 @@ export default {
       return json({ coins: Math.max(0, DAILY - used), dailyLimit: DAILY, monthLeft: Math.max(0, MONTH_CREDITS - usedMonth) });
     }
 
+    if (url.pathname === '/status') {
+      const r = await fetch('https://api.elevenlabs.io/v1/user/subscription', { headers: { 'xi-api-key': env.ELEVENLABS_API_KEY } });
+      const j = await r.json().catch(() => ({}));
+      const usedMonth = await counter(env, `global:${month()}`);
+      return json({ elevenlabs: { plan: j.tier, usados: j.character_count, limite: j.character_limit, se_renueva: j.next_character_count_reset_unix ? new Date(j.next_character_count_reset_unix * 1000).toISOString() : null }, worker: { usados_mes: usedMonth, tope_mes: MONTH_CREDITS, restante: MONTH_CREDITS - usedMonth } });
+    }
+
     if (url.pathname === '/song' && req.method === 'POST') {
       let body; try { body = await req.json(); } catch { return json({ error: 'JSON inválido' }, 400); }
       const device = String(body.device || 'anon').slice(0, 64);

@@ -3,7 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-09-01"
 
 [vars]
-DAILY_PER_DEVICE = "2"      # canciones con IA por iPad por día
+DAILY_PER_DEVICE = "5"      # canciones con IA por iPad por día
 MONTHLY_CREDITS = "27000"   # tope global (plan Starter de ElevenLabs = 30,000 al mes)
 
 # Crear con:  npx wrangler kv namespace create COINS

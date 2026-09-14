@@ -3,7 +3,7 @@
 Intermediario gratuito en Cloudflare que guarda la llave de ElevenLabs y limita el uso.
 
 ## Reglas que aplica
-- 2 canciones con IA por iPad por día (`DAILY_PER_DEVICE` en wrangler.toml).
+- 5 canciones con IA por iPad por día (`DAILY_PER_DEVICE` en wrangler.toml).
 - Tope global de 9,000 créditos al mes (`MONTHLY_CREDITS`). Ojo: la API de música NO funciona en el plan gratis de ElevenLabs; requiere plan Starter (30,000 créditos al mes). Sube el tope a 27000 si quieres usar casi todo.
 - Canciones de 30 segundos (450 créditos cada una), máximo 60.
 - PIN de adulto para saltarse el límite diario (`PARENT_PIN`).

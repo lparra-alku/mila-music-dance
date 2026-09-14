@@ -32,8 +32,27 @@ function json(obj, status = 200, extra = {}) {
   return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...CORS, ...extra } });
 }
 
+// Parte líneas largas en versos de ~7 palabras (ElevenLabs admite máximo 200 caracteres por línea)
+function normalizeLines(lyrics) {
+  const out = [];
+  for (const raw of lyrics.split('\n')) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (!line) continue;
+    const words = line.split(' ');
+    if (line.length <= 60 && words.length <= 9) { out.push(line); continue; }
+    let cur = [];
+    for (const w of words) {
+      cur.push(w);
+      const txt = cur.join(' ');
+      if (cur.length >= 7 || /[.,;!?]$/.test(w) && cur.length >= 4 || txt.length > 150) { out.push(txt.replace(/[,;]$/, '')); cur = []; }
+    }
+    if (cur.length) out.push(cur.join(' '));
+  }
+  return out.map(l => l.slice(0, 200)).slice(0, 24);
+}
+
 function buildPlan(lyrics, style, bpm, seconds) {
-  const lines = lyrics.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 24);
+  const lines = normalizeLines(lyrics);
   const styles = STYLE_PROMPTS[style] || STYLE_PROMPTS.pop;
   const base = [...styles, `${bpm} bpm`, 'child-friendly', 'clear vocals', 'spanish lyrics', 'kid singer', 'great production quality'];
   const negative = ['explicit', 'dark', 'aggressive', 'sad'];
@@ -72,7 +91,8 @@ export default {
       const r = await fetch('https://api.elevenlabs.io/v1/user/subscription', { headers: { 'xi-api-key': env.ELEVENLABS_API_KEY } });
       const j = await r.json().catch(() => ({}));
       const usedMonth = await counter(env, `global:${month()}`);
-      return json({ elevenlabs: { plan: j.tier, usados: j.character_count, limite: j.character_limit, se_renueva: j.next_character_count_reset_unix ? new Date(j.next_character_count_reset_unix * 1000).toISOString() : null }, worker: { usados_mes: usedMonth, tope_mes: MONTH_CREDITS, restante: MONTH_CREDITS - usedMonth } });
+      const lastError = JSON.parse((await env.COINS.get('lasterror')) || 'null');
+      return json({ ultimo_error: lastError, elevenlabs: { plan: j.tier, usados: j.character_count, limite: j.character_limit, se_renueva: j.next_character_count_reset_unix ? new Date(j.next_character_count_reset_unix * 1000).toISOString() : null }, worker: { usados_mes: usedMonth, tope_mes: MONTH_CREDITS, restante: MONTH_CREDITS - usedMonth } });
     }
 
     if (url.pathname === '/song' && req.method === 'POST') {
@@ -98,14 +118,17 @@ export default {
       if (!parentOk && usedToday >= DAILY) return json({ error: 'Ya usaste tus monedas de hoy. Pide el PIN a un adulto 🔐', needPin: true }, 429);
 
       const plan = buildPlan(lyrics, style, bpm, seconds);
-      const r = await fetch('https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128', {
+      const call = () => fetch('https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128', {
         method: 'POST',
         headers: { 'xi-api-key': env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ composition_plan: plan, model_id: 'music_v2_5' }),
       });
+      let r = await call();
+      if (r.status >= 500) r = await call(); // reintenta una vez si ElevenLabs tuvo un error pasajero
       if (!r.ok) {
         const txt = await r.text();
-        return json({ error: 'ElevenLabs no respondió bien', detail: txt.slice(0, 500) }, 502);
+        await env.COINS.put('lasterror', JSON.stringify({ when: new Date().toISOString(), status: r.status, detail: txt.slice(0, 800), lines: plan.chunks.map(c => c.text) }));
+        return json({ error: 'La IA no pudo con esa letra 😅 Prueba con versos más cortos, uno por línea.', detail: txt.slice(0, 500) }, 502);
       }
       // Cobra solo si salió bien
       if (!parentOk) await bump(env, devKey, 1, 60 * 60 * 48);

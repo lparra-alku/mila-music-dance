@@ -43,6 +43,13 @@
   .palette button.sel{border-color:var(--accent2); background:#7b4fff;}
   .lyric{font-size:26px; font-weight:800; text-align:center; min-height:40px; color:var(--accent2);}
   .hint{opacity:.7; font-size:14px;}
+  .song{background:var(--card); border-radius:18px; padding:14px; margin-bottom:12px;}
+  .song h3{margin:0 0 4px; font-size:19px;}
+  .song .meta{opacity:.65; font-size:13px; margin-bottom:10px;}
+  .song .acts{display:flex; gap:8px;}
+  .song .acts button{flex:1; border:0; border-radius:14px; padding:12px 6px; font-size:16px; font-weight:800; background:#41208f; color:#fff;}
+  .song .acts button.go{background:var(--accent2); color:#1a0b3d;}
+  .song .acts button.del{flex:0 0 58px; background:#5b2350;}
   #status{font-size:15px; color:var(--accent3); min-height:20px;}
 </style>
 </head>
@@ -54,6 +61,7 @@
       <button class="active" data-tab="0">1 Letra</button>
       <button data-tab="1">2 Baile</button>
       <button data-tab="2">3 Compartir</button>
+      <button data-tab="3">📚</button>
     </div>
   </header>
 
@@ -88,7 +96,7 @@
   <main id="tab1">
     <div class="card">
       <h2>💃 Arma la coreografía</h2>
-      <p class="hint">1) Toca un paso. 2) Toca las casillas donde quieres ese paso.</p>
+      <p class="hint">1) Toca un paso. 2) Toca las casillas donde lo quieres. Si tocas dos veces la misma casilla, el paso se hace en espejo ↔.</p>
       <div class="palette" id="palette"></div>
     </div>
     <div class="card">
@@ -113,28 +121,48 @@
     </div>
     <canvas id="stage2" width="720" height="1280" style="width:100%;max-width:360px;display:block;margin:0 auto;border-radius:20px;background:#000"></canvas>
   </main>
+
+  <!-- TAB 4: BIBLIOTECA -->
+  <main id="tab3">
+    <div class="card">
+      <h2>📚 Mis canciones</h2>
+      <p class="hint">Aquí se guardan solas todas las canciones hechas con IA. Abrirlas otra vez no gasta monedas.</p>
+    </div>
+    <div id="library"></div>
+  </main>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
 <script>
 /* ===================== DATOS ===================== */
 const STYLES = [
-  {id:'pop', name:'🌈 Pop', bpm:120, prog:[0,7,9,5], drums:'pop'},
-  {id:'reg', name:'🔥 Reggaetón', bpm:96, prog:[9,5,0,7], drums:'dembow'},
-  {id:'rock', name:'🎸 Rock', bpm:140, prog:[0,5,7,5], drums:'rock'},
-  {id:'cumbia', name:'🪗 Cumbia', bpm:100, prog:[0,7,0,7], drums:'cumbia'},
-  {id:'sueño', name:'🌙 Dulce', bpm:84, prog:[0,9,5,7], drums:'soft'},
+  {id:'pop',      name:'🌈 Pop',       bpm:120, prog:[0,7,9,5], drums:'pop'},
+  {id:'reg',      name:'🔥 Reggaetón', bpm:96,  prog:[9,5,0,7], drums:'dembow'},
+  {id:'ranchera', name:'🌵 Ranchera',  bpm:92,  prog:[0,5,7,0], drums:'vals'},
+  {id:'mariachi', name:'🎺 Mariachi',  bpm:132, prog:[0,7,0,5], drums:'mariachi'},
+  {id:'banda',    name:'🎷 Banda',     bpm:128, prog:[0,5,0,7], drums:'banda'},
+  {id:'norteno',  name:'🪗 Norteño',   bpm:124, prog:[0,7,5,7], drums:'polka'},
+  {id:'cumbia',   name:'💃 Cumbia',    bpm:100, prog:[0,7,0,7], drums:'cumbia'},
+  {id:'salsa',    name:'🥁 Salsa',     bpm:180, prog:[2,7,0,5], drums:'salsa'},
+  {id:'rock',     name:'🎸 Rock',      bpm:140, prog:[0,5,7,5], drums:'rock'},
+  {id:'hiphop',   name:'🧢 Hip Hop',   bpm:90,  prog:[0,3,5,3], drums:'boombap'},
+  {id:'disco',    name:'🕺 Disco',     bpm:118, prog:[9,5,0,7], drums:'disco'},
+  {id:'electro',  name:'⚡ Electro',   bpm:128, prog:[0,9,5,7], drums:'edm'},
+  {id:'balada',   name:'💗 Balada',    bpm:76,  prog:[0,9,5,7], drums:'soft'},
+  {id:'navidad',  name:'🎄 Navidad',   bpm:108, prog:[0,5,7,0], drums:'pop'},
+  {id:'sueno',    name:'🌙 Dulce',     bpm:84,  prog:[0,9,5,7], drums:'soft'},
 ];
 const VOICES = [
-  {id:'tri', name:'🐱 Gatito', type:'triangle'},
-  {id:'sq', name:'🤖 Robot', type:'square'},
-  {id:'saw', name:'🦄 Unicornio', type:'sawtooth'},
-  {id:'sin', name:'🐳 Ballena', type:'sine'},
+  {id:'nina',   name:'👧 Niña',   type:'triangle', oct:12, vib:1.2},
+  {id:'nino',   name:'👦 Niño',   type:'square',   oct:12, vib:1.0},
+  {id:'mujer',  name:'👩 Mujer',  type:'triangle', oct:0,  vib:1.6},
+  {id:'hombre', name:'👨 Hombre', type:'sawtooth', oct:-12, vib:1.4},
+  {id:'coro',   name:'👨‍👩‍👧 Coro',  type:'triangle', oct:12, vib:0.8, chorus:true},
 ];
 /* ===================== MOTOR DE PASOS (combos de 8 tiempos) ===================== */
 // Ángulos en grados (0 = derecha, 90 = abajo). u = hombro→codo, f = codo→mano, t = muslo, c = pantorrilla.
-// hip = cadera (px), tw = giro de hombros (px), rot = inclinación, y = altura, jump = salto (0..1), head = cabeza, sx = giro.
-const BASE={lu:100,lf:95,ru:80,rf:85,lt:97,lc:92,rt:83,rc:88,hip:0,tw:0,rot:0,y:0,jump:0,head:0,sx:1};
+// hip = cadera, tw = hombros, rot = inclinación, y = altura, jump = salto, head = cabeza, sx = espejo, fw = giro 3/4.
+const BASE={lu:100,lf:95,ru:80,rf:85,lt:97,lc:92,rt:83,rc:88,hip:0,tw:0,rot:0,y:0,jump:0,head:0,sx:1,fw:1};
 const rep=(arr)=>{const o=[];while(o.length<8)o.push(...arr);return o.slice(0,8);};
 const ARMS={
   pump:  rep([{lu:150,lf:-140,ru:40,rf:60},{lu:140,lf:120,ru:30,rf:-40}]),
@@ -147,8 +175,19 @@ const ARMS={
   roll:  [{lu:150,lf:40,ru:30,rf:140},{lu:120,lf:-20,ru:60,rf:-160},{lu:-150,lf:-60,ru:-30,rf:-120},{lu:180,lf:120,ru:0,rf:60},{lu:150,lf:40,ru:30,rf:140},{lu:120,lf:-20,ru:60,rf:-160},{lu:-150,lf:-60,ru:-30,rf:-120},{lu:180,lf:120,ru:0,rf:60}],
   clap:  rep([{lu:130,lf:50,ru:50,rf:130},{lu:-120,lf:-70,ru:-60,rf:-110}]),
   star:  rep([{lu:130,lf:50,ru:50,rf:130},{lu:-135,lf:-135,ru:-45,rf:-45},{lu:105,lf:95,ru:75,rf:85},{lu:-110,lf:-100,ru:-70,rf:-80}]),
-  hips:  rep([{lu:130,lf:20,ru:50,rf:160},{lu:125,lf:15,ru:55,rf:165}]),
+  hips:  rep([{lu:130,lf:20,ru:50,rf:160},{lu:120,lf:-30,ru:60,rf:-150},{lu:130,lf:20,ru:50,rf:160},{lu:155,lf:95,ru:25,rf:85}]),
   robot: rep([{lu:180,lf:-90,ru:0,rf:90},{lu:180,lf:90,ru:0,rf:-90},{lu:-90,lf:0,ru:90,rf:180},{lu:90,lf:0,ru:-90,rf:180}]),
+  // nuevos
+  sombrero: rep([{lu:-100,lf:-150,ru:120,rf:30},{lu:-120,lf:-175,ru:120,rf:30},{lu:135,lf:25,ru:-60,rf:-155},{lu:135,lf:25,ru:-75,rf:-175}]),   // mano al sombrero y saludo (ranchera)
+  palmas:   rep([{lu:120,lf:30,ru:60,rf:150},{lu:135,lf:45,ru:45,rf:135},{lu:120,lf:30,ru:60,rf:150},{lu:-110,lf:-60,ru:-70,rf:-120}]),
+  lazo:     [{lu:-105,lf:-190,ru:60,rf:140},{lu:-105,lf:-120,ru:55,rf:150},{lu:-105,lf:-60,ru:60,rf:140},{lu:-105,lf:-130,ru:55,rf:150},{lu:-105,lf:-190,ru:60,rf:140},{lu:-105,lf:-120,ru:55,rf:150},{lu:-105,lf:-60,ru:60,rf:140},{lu:-105,lf:-130,ru:55,rf:150}],
+  latin:    rep([{lu:150,lf:70,ru:20,rf:-30},{lu:160,lf:-160,ru:30,rf:110},{lu:-150,lf:-80,ru:30,rf:110},{lu:160,lf:-160,ru:20,rf:-30}]),
+  shoulder: rep([{lu:130,lf:-60,ru:50,rf:-120},{lu:140,lf:-70,ru:40,rf:-110}]),
+  dab:      rep([{lu:-150,lf:-150,ru:160,rf:-170},{lu:105,lf:95,ru:75,rf:85},{lu:30,lf:-10,ru:-30,rf:-30},{lu:105,lf:95,ru:75,rf:85}]),
+  heart:    rep([{lu:-120,lf:-40,ru:-60,rf:-140},{lu:-115,lf:-35,ru:-65,rf:-145}]),
+  push:     rep([{lu:170,lf:170,ru:10,rf:10},{lu:130,lf:-170,ru:50,rf:-10},{lu:170,lf:170,ru:10,rf:10},{lu:-140,lf:-140,ru:-40,rf:-40}]),
+  raiseRoof:rep([{lu:-70,lf:-40,ru:-110,rf:-140},{lu:-115,lf:-125,ru:-65,rf:-55}]),
+  guitar:   rep([{lu:150,lf:20,ru:35,rf:-60},{lu:150,lf:60,ru:35,rf:-10}]),
 };
 const LEGS={
   stepTouch: rep([{lt:100,lc:92,rt:60,rc:70,hip:-14},{lt:100,lc:92,rt:80,rc:88,hip:-6},{lt:120,lc:110,rt:80,rc:88,hip:14},{lt:100,lc:92,rt:80,rc:88,hip:6}]),
@@ -161,26 +200,55 @@ const LEGS={
   groove:    rep([{lt:100,lc:92,rt:80,rc:88,hip:-8,y:4},{lt:102,lc:90,rt:78,rc:90,hip:8,y:-2}]),
   twist:     rep([{lt:110,lc:82,rt:72,rc:98,hip:-16,tw:12},{lt:108,lc:84,rt:70,rc:100,hip:16,tw:-12}]),
   stance:    rep([{lt:112,lc:96,rt:68,rc:84,hip:-6},{lt:112,lc:96,rt:68,rc:84,hip:6}]),
+  // nuevos
+  zapateado: rep([{lt:130,lc:120,rt:83,rc:88,hip:-6,y:2},{lt:97,lc:92,rt:83,rc:88,y:-3},{lt:97,lc:92,rt:50,rc:60,hip:6,y:2},{lt:97,lc:92,rt:83,rc:88,y:-3}]),
+  vals:      rep([{lt:105,lc:95,rt:70,rc:80,hip:-12,rot:-5,y:-6},{lt:100,lc:92,rt:80,rc:88,hip:0,y:4},{lt:110,lc:88,rt:75,rc:95,hip:12,rot:5,y:-6},{lt:100,lc:92,rt:80,rc:88,hip:0,y:4}]),
+  cumbiaStep:rep([{lt:118,lc:100,rt:80,rc:88,hip:-10,rot:-4},{lt:100,lc:92,rt:80,rc:88,hip:-2,y:-4},{lt:100,lc:92,rt:62,rc:76,hip:10,rot:4},{lt:100,lc:92,rt:80,rc:88,hip:2,y:-4}]),
+  salsaStep: rep([{lt:125,lc:105,rt:80,rc:88,hip:-12,y:2},{lt:97,lc:92,rt:83,rc:88,hip:0,y:-4},{lt:97,lc:92,rt:55,rc:70,hip:12,y:2},{lt:97,lc:92,rt:83,rc:88,hip:0,y:-4}]),
+  heelToe:   rep([{lt:140,lc:150,rt:83,rc:88,hip:-8},{lt:120,lc:60,rt:83,rc:88,hip:-8},{lt:97,lc:92,rt:40,rc:30,hip:8},{lt:97,lc:92,rt:60,rc:120,hip:8}]),
+  charleston:rep([{lt:150,lc:120,rt:80,rc:88,hip:-10,rot:-6},{lt:70,lc:60,rt:85,rc:90,hip:-4},{lt:97,lc:92,rt:30,rc:60,hip:10,rot:6},{lt:97,lc:92,rt:110,rc:130,hip:4}]),
+  bounce:    rep([{lt:112,lc:70,rt:68,rc:110,y:20},{lt:99,lc:90,rt:81,rc:90,y:-8}]),
+  skate:     rep([{lt:130,lc:110,rt:60,rc:70,hip:-16,rot:-8},{lt:100,lc:92,rt:80,rc:88,hip:0},{lt:60,lc:70,rt:130,rc:110,hip:16,rot:8},{lt:100,lc:92,rt:80,rc:88,hip:0}]),
+  spinKick:  rep([{lt:100,lc:92,rt:80,rc:88},{lt:100,lc:92,rt:20,rc:15,jump:.3,hip:-12},{lt:100,lc:92,rt:80,rc:88},{lt:100,lc:92,rt:80,rc:88,y:-8}]),
 };
-const BODY={ none:[], lean:rep([{rot:-8},{rot:8}]), nod:rep([{head:-8},{head:8}]), spin:rep([{sx:1},{sx:-1}]), tilt:rep([{head:-14,rot:-5},{head:14,rot:5}]) };
+const BODY={ none:[], lean:rep([{rot:-8},{rot:8}]), nod:rep([{head:-8},{head:8}]), spin:rep([{sx:1},{sx:-1}]), tilt:rep([{head:-14,rot:-5},{head:14,rot:5}]),
+  quarter:rep([{fw:0.62,tw:14},{fw:1,tw:0}]), sway:rep([{rot:-5,head:5},{rot:5,head:-5}]), proud:rep([{rot:-3,head:-10},{rot:3,head:-10}]) };
+// acentos: 'hit' golpe seco con rebote, 'flow' suave, 'snap' muy marcado
 function mkMove(id,emoji,name,energy,arms,legs,body,opts={}){
   const poses=[]; for(let k=0;k<8;k++) poses.push(Object.assign({},BASE,LEGS[legs][k]||{},ARMS[arms][k]||{},(BODY[body]||[])[k]||{}));
-  return Object.assign({id,emoji,name,energy,poses},opts);
+  return Object.assign({id,emoji,name,energy,poses,feel:'hit'},opts);
 }
 const STEPS=[
-  mkMove('groove','🎧','Groove',1,'hips','groove','nod'),
-  mkMove('steptouch','👟','Step Touch',1,'swing','stepTouch','lean'),
-  mkMove('wave','🌊','Wave',1,'wave','groove','none'),
-  mkMove('slide','🌙','Slide',1,'roll','slide','none'),
+  // suaves (1)
+  mkMove('groove','🎧','Groove',1,'hips','groove','nod',{feel:'flow'}),
+  mkMove('steptouch','👟','Step Touch',1,'swing','stepTouch','lean',{feel:'flow'}),
+  mkMove('wave','🌊','Wave',1,'wave','groove','none',{feel:'flow'}),
+  mkMove('slide','🌙','Slide',1,'roll','slide','none',{feel:'flow'}),
   mkMove('robot','🤖','Robot',1,'robot','stance','tilt',{robot:true}),
+  mkMove('vals','🌹','Vals',1,'sombrero','vals','sway',{feel:'flow'}),
+  mkMove('corazon','💖','Corazón',1,'heart','groove','sway',{feel:'flow'}),
+  mkMove('hombros','😌','Hombros',1,'shoulder','groove','quarter',{feel:'flow'}),
+  // medios (2)
   mkMove('twist','🌪️','Twist',2,'pump','twist','none'),
   mkMove('kneepump','🔥','Knee Pump',2,'pump','kneeUp','none'),
   mkMove('crossopen','✖️','Cross & Open',2,'cross','stepTouch','lean'),
   mkMove('kickpoint','🎯','Kick & Point',2,'point','kick','none'),
   mkMove('lungeroll','💪','Lunge Roll',2,'roll','lunge','none'),
+  mkMove('cumbia','💃','Paso Cumbia',2,'latin','cumbiaStep','sway',{feel:'flow'}),
+  mkMove('salsa','🥁','Paso Salsa',2,'latin','salsaStep','quarter'),
+  mkMove('charleston','🎩','Charleston',2,'swing','charleston','lean'),
+  mkMove('heeltoe','👢','Punta Talón',2,'palmas','heelToe','proud'),
+  mkMove('skate','⛸️','Skate',2,'push','skate','lean',{feel:'flow'}),
+  mkMove('dab','😎','Dab',2,'dab','bounce','none',{feel:'snap'}),
+  mkMove('guitarra','🎸','Aire Guitarra',2,'guitar','bounce','lean'),
+  // fuertes (3)
   mkMove('spin','🌀','Spin',3,'point','groove','spin'),
-  mkMove('jumpclap','👏','Jump Clap',3,'clap','crouchJump','none'),
-  mkMove('starjump','⭐','Star Jump',3,'star','star','none'),
+  mkMove('jumpclap','👏','Jump Clap',3,'clap','crouchJump','none',{feel:'snap'}),
+  mkMove('starjump','⭐','Star Jump',3,'star','star','none',{feel:'snap'}),
+  mkMove('zapateado','🌵','Zapateado',3,'sombrero','zapateado','proud',{feel:'snap'}),
+  mkMove('lazo','🤠','Lazo',3,'lazo','zapateado','proud'),
+  mkMove('techo','🙌','Levanta el Techo',3,'raiseRoof','bounce','none',{feel:'snap'}),
+  mkMove('spinkick','🥋','Spin Kick',3,'push','spinKick','spin',{feel:'snap'}),
 ];
 
 /* ===================== IA (Worker de Cloudflare) ===================== */
@@ -196,7 +264,7 @@ async function refreshCoins(){
 async function makeAISong(text, pin){
   const btn=document.getElementById('btnMakeAI'); btn.disabled=true; btn.textContent='🎶 Creando tu canción... (1 minuto)';
   try{
-    const r=await fetch(`${WORKER_URL}/song`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID,lyrics:text,style:style.id,bpm:style.bpm,seconds:30,pin})});
+    const r=await fetch(`${WORKER_URL}/song`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID,lyrics:text,style:style.id,voice:voice.id,bpm:style.bpm,seconds:30,pin})});
     if(!r.ok){
       const j=await r.json().catch(()=>({error:'Error '+r.status}));
       if(j.needPin){ const p=prompt('🔐 PIN de un adulto para otra canción:'); if(p) return makeAISong(text,p); }
@@ -268,6 +336,12 @@ function compose(text){
       events.push({t, dur:beat*0.9, kind:'bass', note: q%2? root+7: root});
       if(style.drums==='dembow'){ events.push({t,kind:'kick'}); events.push({t:t+beat*0.75,kind:'snare'}); if(q%2) events.push({t:t+beat*0.5,kind:'snare'}); }
       else if(style.drums==='soft'){ if(q%2===0) events.push({t,kind:'kick'}); events.push({t:t+beat*0.5,kind:'hat'}); }
+      else if(style.drums==='vals'){ if(q===0) events.push({t,kind:'kick'}); else events.push({t,kind:'snare'}); }
+      else if(style.drums==='mariachi'||style.drums==='polka'){ events.push({t,kind:q%2?'snare':'kick'}); events.push({t:t+beat*0.5,kind:'hat'}); }
+      else if(style.drums==='banda'){ events.push({t,kind:q%2?'snare':'kick'}); events.push({t:t+beat*0.5,kind:'kick'}); events.push({t:t+beat*0.25,kind:'hat'}); }
+      else if(style.drums==='salsa'){ if(q%2===0) events.push({t,kind:'kick'}); events.push({t:t+beat*0.5,kind:'hat'}); events.push({t:t+beat*0.75,kind:'snare'}); }
+      else if(style.drums==='boombap'){ if(q===0||q===2) events.push({t,kind:'kick'}); if(q%2) events.push({t,kind:'snare'}); events.push({t:t+beat*0.5,kind:'hat'}); }
+      else if(style.drums==='disco'||style.drums==='edm'){ events.push({t,kind:'kick'}); events.push({t:t+beat*0.5,kind:'hat'}); if(q%2) events.push({t,kind:'snare'}); }
       else { events.push({t, kind:q%2?'snare':'kick'}); events.push({t,kind:'hat'}); events.push({t:t+beat*0.5,kind:'hat'}); if(style.drums==='rock') events.push({t:t+beat*0.5,kind:'kick'}); }
       // acorde
       if(q===0||style.drums==='cumbia'&&q%2){ [0,4,7].forEach(iv=>events.push({t, dur:beat*(style.drums==='cumbia'?0.4:3.5), kind:'pad', note:root+24+iv})); }
@@ -288,11 +362,16 @@ function schedule(ctx, dest, t0){
     if(e.kind==='lead'||e.kind==='bass'||e.kind==='pad'){
       const o=ctx.createOscillator(), g=ctx.createGain();
       o.type = e.kind==='lead'? voice.type : e.kind==='bass'?'sawtooth':'triangle';
-      o.frequency.value=midi(e.note);
+      const noteN = e.kind==='lead'? e.note+(voice.oct||0) : e.note;
+      o.frequency.value=midi(noteN);
       const vol = e.kind==='lead'?0.25: e.kind==='bass'?0.3:0.06;
       g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.02);
       g.gain.setValueAtTime(vol,t+e.dur*0.7); g.gain.linearRampToValueAtTime(0,t+e.dur);
-      if(e.kind==='lead'){ o.frequency.setValueAtTime(midi(e.note)*0.97,t); o.frequency.exponentialRampToValueAtTime(midi(e.note),t+0.05); o.frequency.setValueAtTime(midi(e.note),t+0.05); for(let v=0;v<e.dur;v+=0.08) o.frequency.setValueAtTime(midi(e.note)*(v%0.16?1.006:0.994),t+0.15+v); }
+      if(e.kind==='lead'){ const f=midi(noteN), vb=(voice.vib||1)*0.006;
+        o.frequency.setValueAtTime(f*0.97,t); o.frequency.exponentialRampToValueAtTime(f,t+0.05);
+        for(let v=0;v<e.dur;v+=0.08) o.frequency.setValueAtTime(f*(v%0.16?1+vb:1-vb),t+0.15+v);
+        if(voice.chorus){ const o2=ctx.createOscillator(), g2=ctx.createGain(); o2.type=o.type; o2.frequency.value=f*1.004; g2.gain.setValueAtTime(0,t); g2.gain.linearRampToValueAtTime(vol*0.55,t+0.03); g2.gain.linearRampToValueAtTime(0,t+e.dur); o2.connect(g2); g2.connect(comp); o2.start(t); o2.stop(t+e.dur+0.05);
+          const o3=ctx.createOscillator(), g3=ctx.createGain(); o3.type=o.type; o3.frequency.value=f*0.5; g3.gain.setValueAtTime(0,t); g3.gain.linearRampToValueAtTime(vol*0.4,t+0.03); g3.gain.linearRampToValueAtTime(0,t+e.dur); o3.connect(g3); g3.connect(comp); o3.start(t); o3.stop(t+e.dur+0.05); } }
       let last=o; if(e.kind==='bass'){const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=500;o.connect(f);last=f;}
       last.connect(g); g.connect(comp); o.start(t); o.stop(t+e.dur+0.05);
     } else if(e.kind==='kick'){
@@ -324,81 +403,89 @@ function songTime(){ return playing? audioCtx.currentTime-playing.t0 : -1; }
 /* ===================== DIBUJO DEL BAILARÍN ===================== */
 const stage = document.getElementById('stage'), stage2=document.getElementById('stage2');
 function lerp(a,b,k){return a+(b-a)*k;}
+/* --- curvas de animación: anticipación, golpe y rebote (follow-through) --- */
+const EASE={
+  flow: x=> x<0.5? 2*x*x : 1-Math.pow(-2*x+2,2)/2,
+  hit:  x=>{ const c1=1.9,c3=c1+1,t=x-1; return 1+c3*t*t*t+c1*t*t; },              // rebote al final
+  snap: x=>{ if(x<0.16) return -0.13*Math.sin(x/0.16*Math.PI);                      // anticipación hacia atrás
+             const u=(x-0.16)/0.84, c1=2.4,c3=c1+1,t=u-1; return 1+c3*t*t*t+c1*t*t; },
+  robot:x=> x<0.45?0:1,
+};
+function stepAt(bar){ const e=choreo[bar]||choreo[0]||STEPS[0].id; const mir=e.endsWith('*'); const id=mir?e.slice(0,-1):e; return {step:STEPS.find(s=>s.id===id)||STEPS[0], mir}; }
 function poseAt(tt){
   const beatN=Math.floor(tt/song.beat), beatF=(tt/song.beat)%1, bar=Math.floor(tt/(song.beat*4));
-  const step=STEPS.find(s=>s.id===choreo[bar])||STEPS[0];
+  const {step,mir}=stepAt(Math.max(0,bar));
   const k=beatN%8, cur=step.poses[k], prev=step.poses[(k+7)%8];
-  let e; if(step.robot) e = beatF<0.5?0:1; else { const q=Math.min(1,beatF/0.4); e=1-Math.pow(1-q,3); }
+  const e=(EASE[step.robot?'robot':step.feel]||EASE.hit)(Math.min(1,Math.max(0,beatF/0.55)));
   const pose={}; for(const key in BASE) pose[key]=lerp(prev[key],cur[key],e);
-  pose.y += -cur.jump*85*Math.sin(Math.PI*beatF);
-  pose.y += Math.sin(beatF*Math.PI*2)*2.5*step.energy;
-  return {pose,step,bar,beatPhase:beatF,beatN};
+  pose.y += -cur.jump*85*Math.sin(Math.PI*beatF);                     // arco del salto
+  pose.y += Math.sin(beatF*Math.PI*2)*2.5*step.energy;                 // pulso del cuerpo
+  pose.sx *= mir?-1:1;
+  return {pose,step,bar,beatPhase:beatF,beatN,mir};
 }
 function currentPose(t){
-  const idle={pose:Object.assign({},BASE), step:STEPS[0], bar:-1, beatPhase:0, beatN:0, prev:Object.assign({},BASE)};
+  const idle={pose:Object.assign({},BASE), arms:Object.assign({},BASE), head:Object.assign({},BASE), prev:Object.assign({},BASE), step:STEPS[0], bar:-1, beatPhase:0, beatN:0};
   if(!song||t<0) return idle;
   const tt=t-(song.offset||0); if(tt<0) return idle;
-  const now=poseAt(tt); now.prev=poseAt(Math.max(0,tt-0.07)).pose; return now;
+  const now=poseAt(tt);
+  // follow-through: los brazos y la cabeza llegan un instante después que el torso
+  now.arms=poseAt(Math.max(0,tt-0.05)).pose;
+  now.head=poseAt(Math.max(0,tt-0.03)).pose;
+  now.prev=poseAt(Math.max(0,tt-0.07)).pose;
+  return now;
 }
-function drawDancer(c, pose, prev, s, cx, groundY, flash){
-  const lift=Math.max(0,-pose.y);
+function drawDancer(c, P, A, HD, prev, s, cx, groundY, flash, step){
+  const lift=Math.max(0,-P.y), squash=1+Math.min(.12,lift/900)-Math.max(0,P.y)/700;
   c.fillStyle='rgba(0,0,0,.45)'; c.beginPath(); c.ellipse(cx,groundY,60*s*(1-lift/320),12*s*(1-lift/320),0,0,7); c.fill();
-  const hipY=groundY-125*s+pose.y*s*0.8;
-  c.save(); c.translate(cx,hipY); c.scale(pose.sx,1); c.rotate(pose.rot*Math.PI/180);
-  const shY=-78*s, hx=pose.hip*0.5, tw=pose.tw+(-pose.hip*0.35);
+  const hipY=groundY-125*s+P.y*s*0.8, bodyX=cx+P.hip*0.28*s;
+  c.save(); c.translate(bodyX,hipY); c.scale(P.sx,squash); c.rotate(P.rot*Math.PI/180);
+  const fw=P.fw||1, shY=-78*s, hx=P.hip*0.5, tw=P.tw+(-P.hip*0.35);
   const grad=c.createLinearGradient(0,shY-30*s,0,90*s); grad.addColorStop(0,'#ff4fa3'); grad.addColorStop(0.55,'#b04dff'); grad.addColorStop(1,'#4f6cff');
   c.shadowColor='rgba(120,220,255,.85)'; c.shadowBlur=26*(0.6+flash*0.8);
   const seg=(x0,y0,ang,len,w0,w1)=>{const r=ang*Math.PI/180,x1=x0+Math.cos(r)*len,y1=y0+Math.sin(r)*len,nx=-Math.sin(r),ny=Math.cos(r);
     c.beginPath(); c.moveTo(x0+nx*w0,y0+ny*w0); c.lineTo(x1+nx*w1,y1+ny*w1); c.arc(x1,y1,w1,r+Math.PI/2,r-Math.PI/2,true); c.lineTo(x0-nx*w0,y0-ny*w0); c.arc(x0,y0,w0,r-Math.PI/2,r+Math.PI/2,true); c.closePath(); c.fill(); return [x1,y1];};
   c.fillStyle=grad;
-  // piernas
   const feet=[];
-  for(const sd of ['l','r']){ const x0=hx+(sd==='l'?-9*s:9*s); const [kx,ky]=seg(x0,0,pose[sd+'t'],50*s,11*s,8.5*s); const [fx,fy]=seg(kx,ky,pose[sd+'c'],50*s,8.5*s,6.5*s); feet.push([fx,fy,pose[sd+'c']]); }
-  // torso (hombros más anchos que cadera, con giro)
-  c.beginPath(); c.moveTo(hx-16*s,4*s); c.lineTo(hx+16*s,4*s); c.quadraticCurveTo(tw+26*s,shY+30*s,tw+24*s,shY); c.lineTo(tw-24*s,shY); c.quadraticCurveTo(tw-26*s,shY+30*s,hx-16*s,4*s); c.closePath(); c.fill();
-  c.beginPath(); c.ellipse(tw,shY,24*s,9*s,0,0,7); c.fill();
-  // brazos
-  for(const sd of ['l','r']){ const x0=tw+(sd==='l'?-22*s:22*s); const [ex,ey]=seg(x0,shY+2*s,pose[sd+'u'],40*s,8*s,6.5*s); const [wx,wy]=seg(ex,ey,pose[sd+'f'],38*s,6.5*s,5*s); c.beginPath(); c.arc(wx,wy,7*s,0,7); c.fill(); }
-  // cuello y cabeza
+  for(const sd of ['l','r']){ const x0=hx+(sd==='l'?-9*s:9*s)*fw; const [kx,ky]=seg(x0,0,P[sd+'t'],50*s,11*s,8.5*s); const [fx,fy]=seg(kx,ky,P[sd+'c'],50*s,8.5*s,6.5*s); feet.push([fx,fy,P[sd+'c']]); }
+  c.beginPath(); c.moveTo(hx-16*s*fw,4*s); c.lineTo(hx+16*s*fw,4*s); c.quadraticCurveTo(tw+26*s*fw,shY+30*s,tw+24*s*fw,shY); c.lineTo(tw-24*s*fw,shY); c.quadraticCurveTo(tw-26*s*fw,shY+30*s,hx-16*s*fw,4*s); c.closePath(); c.fill();
+  c.beginPath(); c.ellipse(tw,shY,24*s*fw,9*s,0,0,7); c.fill();
+  for(const sd of ['l','r']){ const x0=tw+(sd==='l'?-22*s:22*s)*fw;
+    const [ex,ey]=seg(x0,shY+2*s,A[sd+'u'],40*s,8*s,6.5*s); const [wx,wy]=seg(ex,ey,A[sd+'f'],38*s,6.5*s,5*s);
+    if(step&&step.energy>=3){ c.globalAlpha=.28; seg(x0,shY+2*s,prev[sd+'u'],40*s,7*s,5*s); c.globalAlpha=1; }   // estela
+    c.beginPath(); c.arc(wx,wy,7*s,0,7); c.fill(); }
   c.beginPath(); c.rect(tw-5*s,shY-14*s,10*s,16*s); c.fill();
-  c.save(); c.translate(tw,shY-14*s); c.rotate(pose.head*Math.PI/180);
-  c.fillStyle='#2b1466'; c.beginPath(); c.ellipse(0,-20*s,17*s,21*s,0,0,7); c.fill();
-  // pelo recogido + coleta con inercia
-  c.fillStyle='#3b2a7a'; c.beginPath(); c.ellipse(0,-27*s,18.5*s,16*s,0,Math.PI,0); c.fill();
+  c.save(); c.translate(tw,shY-14*s); c.rotate(HD.head*Math.PI/180);
+  c.fillStyle='#2b1466'; c.beginPath(); c.ellipse(0,-20*s,17*s*fw,21*s,0,0,7); c.fill();
+  c.fillStyle='#3b2a7a'; c.beginPath(); c.ellipse(0,-27*s,18.5*s*fw,16*s,0,Math.PI,0); c.fill();
   c.beginPath(); c.arc(0,-41*s,7.5*s,0,7); c.fill();
-  const sw=Math.max(-40,Math.min(40,(pose.hip-prev.hip)*2.5+(pose.rot-prev.rot)*3-(pose.y-prev.y)*0.8));
+  const sw=Math.max(-40,Math.min(40,(P.hip-prev.hip)*2.5+(P.rot-prev.rot)*3-(P.y-prev.y)*0.8));
   c.beginPath(); c.moveTo(0,-40*s); c.quadraticCurveTo(-sw*s*0.6-10*s,-30*s,-sw*s-6*s,-4*s+Math.abs(sw)*s*0.2); c.lineTo(-sw*s+2*s,-6*s+Math.abs(sw)*s*0.2); c.quadraticCurveTo(-sw*s*0.4+4*s,-28*s,4*s,-40*s); c.closePath(); c.fill();
-  // lentes con reflejo
-  c.fillStyle='rgba(255,255,255,.92)'; c.beginPath(); c.roundRect(-15*s,-25*s,30*s,7*s,3*s); c.fill();
+  c.fillStyle='rgba(255,255,255,.92)'; c.beginPath(); c.roundRect(-15*s*fw,-25*s,30*s*fw,7*s,3*s); c.fill();
   c.restore();
-  // zapatillas
   c.fillStyle='#4fe3ff'; for(const [fx,fy,ang] of feet){ c.save(); c.translate(fx,fy); c.rotate((ang-90)*Math.PI/180*0.3); c.beginPath(); c.ellipse(2*s,3*s,15*s,7*s,0,0,7); c.fill(); c.restore(); }
   c.shadowBlur=0;
   c.restore();
 }
 function draw(canvas, t){
   const c=canvas.getContext('2d'), W=canvas.width, H=canvas.height;
-  const {pose, prev, step, bar, beatPhase, beatN} = currentPose(t);
+  const {pose, arms, head, prev, step, bar, beatPhase, beatN, mir} = currentPose(t);
   const flash = t>=0 ? Math.max(0,1-beatPhase*3) : 0;
   const hue=(bar*40+(song?song.bpm:0))%360;
   const g=c.createLinearGradient(0,0,0,H); g.addColorStop(0,`hsl(${hue},70%,${14+flash*6}%)`); g.addColorStop(1,'#07030f');
   c.fillStyle=g; c.fillRect(0,0,W,H);
-  // haces de luz de escenario
   for(let i=0;i<5;i++){ const x=W*(0.1+i*0.2), a=Math.sin(Math.max(0,t)*0.8+i)*0.35; c.save(); c.translate(x,0); c.rotate(a); const lg=c.createLinearGradient(0,0,0,H); lg.addColorStop(0,`hsla(${(hue+i*50)%360},100%,70%,${0.22+flash*0.18})`); lg.addColorStop(1,'rgba(0,0,0,0)'); c.fillStyle=lg; c.beginPath(); c.moveTo(-20,0); c.lineTo(20,0); c.lineTo(160,H); c.lineTo(-160,H); c.fill(); c.restore(); }
-  // piso reflectante
   const fg=c.createLinearGradient(0,H*0.78,0,H); fg.addColorStop(0,`hsla(${hue},60%,30%,.9)`); fg.addColorStop(1,'#000'); c.fillStyle=fg; c.fillRect(0,H*0.78,W,H);
   c.strokeStyle='rgba(255,255,255,.08)'; c.lineWidth=2; for(let i=0;i<8;i++){ c.beginPath(); c.moveTo(W/2+(i-4)*40,H*0.78); c.lineTo(W/2+(i-4)*260,H); c.stroke(); }
   const s=2.15, cx=W/2, groundY=H*0.8;
-  drawDancer(c,pose,prev,s,cx,groundY,flash);
+  drawDancer(c,pose,arms,head,prev,s,cx,groundY,flash,step);
   const lift=Math.max(0,-pose.y);
   if(t>=0 && step.energy>=3 && lift>40){ const cy=groundY-120*s-lift*s*0.8; for(let i=0;i<14;i++){ const ang=i/14*Math.PI*2+beatN, rad=(90+lift*1.2)*s*0.6; c.fillStyle=`hsl(${(i*26+beatN*50)%360},100%,70%)`; c.beginPath(); c.arc(cx+Math.cos(ang)*rad, cy+Math.sin(ang)*rad*0.8, 5+flash*7,0,7); c.fill(); } }
-  // textos
   c.textAlign='center'; c.fillStyle='rgba(255,255,255,.85)'; c.font='bold 36px sans-serif';
   c.fillText('MILA MUSIC DANCE', W/2, 70);
   if(song && t>=0){
     const line = song.lines.find(l=>t>=l.start-0.2&&t<l.end);
     c.fillStyle='#ffd43b'; c.font='bold 46px sans-serif'; wrap(c, line?line.text:'♪ ♪ ♪', W/2, H*0.87, W-80, 54);
-    c.fillStyle='#fff'; c.font=`800 ${58+flash*8}px sans-serif`; c.fillText(`${step.emoji} ${step.name.toUpperCase()}`, W/2, H*0.16);
+    c.fillStyle='#fff'; c.font=`800 ${58+flash*8}px sans-serif`; c.fillText(`${step.emoji} ${step.name.toUpperCase()}${mir?' ↔':''}`, W/2, H*0.16);
     c.fillStyle='rgba(255,255,255,.25)'; c.fillRect(60,H*0.19,W-120,8);
     c.fillStyle='#ff4fa3'; c.fillRect(60,H*0.19,(W-120)*Math.min(1,t/song.duration),8);
     for(let i=0;i<8;i++){ c.fillStyle=(beatN%8)===i?'#ffd43b':'rgba(255,255,255,.3)'; c.beginPath(); c.arc(W/2-84+i*24,H*0.215,(i%4===0?8:6),0,7); c.fill(); }
@@ -443,15 +530,21 @@ function autoChoreo(seed){
   let lvl;
   if(en.length){ const sm=en.map((e,i)=>(e+(en[i-1]??e)+(en[i+1]??e))/3); const so=[...sm].sort((a,b)=>a-b); const lo=so[Math.floor(so.length/3)], hi=so[Math.floor(so.length*2/3)]; lvl=b=> sm[b]>=hi?3: sm[b]>=lo?2:1; }
   else lvl=b=> (b===0||b===bars-1)?1: (Math.floor(b/4)%2?3:2);
-  // secciones = tramos contiguos con la misma intensidad (verso, coro, puente...)
   const secs=[]; for(let b=0;b<bars;b++){ const l=lvl(b); if(secs.length&&secs[secs.length-1].l===l) secs[secs.length-1].len++; else secs.push({l,start:b,len:1}); }
-  // una rutina de 4 combos por tipo de sección; se repite cuando vuelve esa sección, como en una coreografía real
+  // una rutina por tipo de sección; se repite igual cuando vuelve esa sección, como una coreografía real
   const routines={}; const pick=(l,avoid)=>{let pool=STEPS.filter(s=>s.energy===l&&s.id!==avoid); if(!pool.length)pool=STEPS.filter(s=>s.id!==avoid); return pool[Math.floor(r()*pool.length)].id;};
   const out=[];
   for(const sec of secs){
-    if(!routines[sec.l]){ const rt=[]; let last=null; for(let i=0;i<4;i++){ last=pick(sec.l,last); rt.push(last);} routines[sec.l]=rt; }
-    const rt=routines[sec.l]; for(let i=0;i<sec.len;i++) out.push(rt[Math.floor(i/2)%rt.length]);
+    if(!routines[sec.l]){ const rt=[]; let last=null; for(let i=0;i<2;i++){ last=pick(sec.l,last); rt.push(last);} routines[sec.l]=rt; }
+    const rt=routines[sec.l];
+    for(let i=0;i<sec.len;i++){
+      const base=rt[Math.floor(i/2)%rt.length];
+      // el paso se repite 2 compases; el segundo va en espejo, como en las coreografías de verdad
+      out.push(i%2===1? base+'*' : base);
+    }
   }
+  // remate: la última frase termina con un paso fuerte
+  if(out.length>1){ const fin=STEPS.filter(s=>s.energy===3); out[out.length-1]=fin[Math.floor(r()*fin.length)].id; }
   choreo=out; renderTimeline();
 }
 
@@ -498,6 +591,59 @@ async function shareOrDownload(file){
   const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name; a.click();
 }
 
+/* ===================== BIBLIOTECA (se guarda en el iPad) ===================== */
+let DB=null;
+function db(){
+  if(DB) return DB;
+  DB=new Promise((res,rej)=>{ const q=indexedDB.open('milaMusic',1);
+    q.onupgradeneeded=()=>{ if(!q.result.objectStoreNames.contains('songs')) q.result.createObjectStore('songs',{keyPath:'id'}); };
+    q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); });
+  return DB;
+}
+let LIB_OK=true, MEM=[];   // MEM: respaldo en memoria si el iPad no deja guardar
+async function tx(mode,fn){ try{ const d=await db(); return await new Promise((res,rej)=>{ const t=d.transaction('songs',mode), st=t.objectStore('songs'); const r=fn(st); t.oncomplete=()=>res(r&&r.result!==undefined?r.result:r); t.onerror=()=>rej(t.error); }); }catch(e){ LIB_OK=false; DB=null; return null; } }
+async function saveSong(rec){ const r=await tx('readwrite',st=>st.put(rec)); if(!LIB_OK){ MEM=MEM.filter(x=>x.id!==rec.id); MEM.push(rec); } return r; }
+async function allSongs(){ const r=await tx('readonly',st=>st.getAll()); return LIB_OK? (r||[]) : MEM; }
+async function delSong(id){ await tx('readwrite',st=>st.delete(id)); MEM=MEM.filter(x=>x.id!==id); }
+
+function songTitle(text){ const l=text.split('\n').map(x=>x.trim()).filter(Boolean)[0]||'Mi canción'; return l.length>34? l.slice(0,34)+'…' : l; }
+async function storeCurrent(text){
+  if(!song||song.mode!=='ai') return;
+  const rec={id:Date.now()+'', title:songTitle(text), lyrics:text, styleId:style.id, styleName:style.name, voiceId:voice.id, voiceName:voice.name, blob:song.blob, choreo:[...choreo], date:new Date().toISOString()};
+  await saveSong(rec); song.libId=rec.id; renderLibrary();
+}
+async function renderLibrary(){
+  const box=$('library'); if(!box) return;
+  const list=(await allSongs())||[];
+  list.sort((a,b)=>b.id.localeCompare(a.id));
+  const warn = LIB_OK? '' : '<div class="card"><p class="hint">⚠️ Este navegador no deja guardar canciones de forma permanente. Se conservan solo mientras la app esté abierta.</p></div>';
+  if(!list.length){ box.innerHTML=warn+'<div class="card"><p class="hint">Todavía no hay canciones guardadas. Crea una con IA y aparecerá aquí.</p></div>'; return; }
+  box.innerHTML=warn;
+  for(const r of list){
+    const d=new Date(r.date), el=document.createElement('div'); el.className='song';
+    el.innerHTML=`<h3>🎵 ${r.title}</h3><div class="meta">${r.styleName} · ${r.voiceName} · ${d.toLocaleDateString('es-MX')} ${d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</div>
+      <div class="acts"><button class="go">▶️ Abrir</button><button class="dl">🎧 MP3</button><button class="del">🗑</button></div>`;
+    el.querySelector('.go').onclick=()=>openSong(r);
+    el.querySelector('.dl').onclick=()=>shareOrDownload(new File([r.blob],(r.title||'cancion')+'.mp3',{type:'audio/mpeg'}));
+    el.querySelector('.del').onclick=async()=>{ if(confirm('¿Borrar "'+r.title+'"?')){ await delSong(r.id); renderLibrary(); } };
+    box.appendChild(el);
+  }
+}
+async function openSong(r){
+  stop();
+  const c=new (window.AudioContext||window.webkitAudioContext)();
+  const buffer=await c.decodeAudioData(await r.blob.arrayBuffer()); c.close();
+  const st=STYLES.find(x=>x.id===r.styleId)||style; style=st; voice=VOICES.find(x=>x.id===r.voiceId)||voice;
+  document.querySelectorAll('#styles .chip').forEach((b,i)=>b.classList.toggle('sel',STYLES[i].id===style.id));
+  document.querySelectorAll('#voices .chip').forEach((b,i)=>b.classList.toggle('sel',VOICES[i].id===voice.id));
+  $('lyrics').value=r.lyrics;
+  const bt=analyzeBeats(buffer, st.bpm), lines=r.lyrics.split('\n').map(l=>l.trim()).filter(Boolean);
+  const intro=Math.min(3,buffer.duration*0.1), per=(buffer.duration-intro)/lines.length;
+  song={mode:'ai', libId:r.id, blob:r.blob, buffer, bpm:bt.bpm, beat:bt.beat, offset:bt.offset, bars:bt.bars, barEnergy:bt.barEnergy, duration:buffer.duration, events:[], lines:lines.map((t,i)=>({text:t,start:intro+i*per,end:intro+(i+1)*per}))};
+  if(r.choreo&&r.choreo.length===song.bars){ choreo=[...r.choreo]; renderTimeline(); } else autoChoreo(hash(r.lyrics));
+  setStatusUI(); document.querySelector('[data-tab="1"]').click(); play();
+}
+
 /* ===================== UI ===================== */
 const $=id=>document.getElementById(id);
 function setStatus(s){ $('status').textContent=s; }
@@ -513,8 +659,12 @@ STEPS.forEach(s=>{const b=document.createElement('button');b.className=s.id===se
 function renderTimeline(){
   const tl=$('timeline'); tl.innerHTML='';
   if(!song) return;
-  choreo.forEach((id,i)=>{const s=STEPS.find(x=>x.id===id);const d=document.createElement('div');d.className='slot';d.innerHTML=`${s.emoji}<small>${i+1}</small>`;d.onclick=()=>{choreo[i]=selStep;renderTimeline();};tl.appendChild(d);});
+  choreo.forEach((e,i)=>{const mir=e.endsWith('*'), id=mir?e.slice(0,-1):e; const s=STEPS.find(x=>x.id===id)||STEPS[0];
+    const d=document.createElement('div');d.className='slot';d.innerHTML=`${s.emoji}<small>${i+1}${mir?' ↔':''}</small>`;
+    d.onclick=()=>{ choreo[i]= (choreo[i]===selStep)? selStep+'*' : selStep; renderTimeline(); persistChoreo(); };
+    tl.appendChild(d);});
 }
+async function persistChoreo(){ if(!song||!song.libId) return; const list=(await allSongs())||[]; const r=list.find(x=>x.id===song.libId); if(r){ r.choreo=[...choreo]; await saveSong(r); } }
 function setStatusUI(){
   const has=!!song, on=!!playing;
   ['btnPlay0','btnPlay1'].forEach(i=>$(i).disabled=!has||on);
@@ -533,9 +683,9 @@ $('btnMake').onclick=()=>{
 $('btnMakeAI').onclick=async()=>{
   const text=$('lyrics').value.trim();
   if(!text){ alert('¡Escribe tu letra primero! ✍️'); return; }
-  stop(); const s=await makeAISong(text); if(s) useSong(s, text);
+  stop(); const s=await makeAISong(text); if(s){ useSong(s, text); storeCurrent(text); }
 };
-refreshCoins();
+refreshCoins(); renderLibrary();
 $('btnRandom').onclick=()=>{ if(!song)return; autoChoreo(Math.floor(Math.random()*1e9)); };
 $('btnPlay0').onclick=$('btnPlay1').onclick=()=>{ play(); setStatusUI(); };
 $('btnStop0').onclick=$('btnStop1').onclick=()=>stop();

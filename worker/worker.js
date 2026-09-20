@@ -4,7 +4,7 @@
  *
  * Rutas:
  *   GET  /coins?device=ID          -> { coins, dailyLimit, monthLeft }
- *   POST /song  { device, lyrics, style, bpm, seconds, pin? } -> audio/mpeg
+ *   POST /song  { device, lyrics, style, voice, bpm, seconds, pin? } -> audio/mpeg
  */
 
 const CORS = {
@@ -15,12 +15,38 @@ const CORS = {
 };
 
 const STYLE_PROMPTS = {
-  pop:    ['upbeat kids pop', 'bright synths', 'catchy chorus', 'happy'],
-  reg:    ['kids reggaeton', 'dembow beat', 'playful', 'latin'],
-  rock:   ['fun kids rock', 'electric guitar', 'energetic', 'clean'],
-  cumbia: ['cumbia infantil', 'accordion', 'festive', 'latin'],
-  sueño:  ['gentle lullaby pop', 'soft piano', 'dreamy', 'warm'],
+  pop:      ['upbeat kids pop', 'bright synths', 'catchy chorus', 'happy', 'modern radio production'],
+  reg:      ['kids reggaeton', 'dembow beat', 'playful', 'latin urban', 'clean fun vibe'],
+  rock:     ['fun kids rock', 'electric guitar riffs', 'energetic drums', 'anthemic'],
+  cumbia:   ['cumbia', 'accordion', 'guira percussion', 'festive latin', 'danceable'],
+  ranchera: ['ranchera mexicana', 'mariachi trumpets', 'vihuela and guitarron', 'proud and warm', 'traditional mexican'],
+  mariachi: ['mariachi festivo', 'trumpet fanfare', 'violins', 'son jalisciense', 'celebratory'],
+  banda:    ['banda sinaloense', 'brass section', 'tuba bassline', 'snare shuffle', 'norteno party'],
+  norteno:  ['norteno', 'accordion and bajo sexto', 'polka rhythm', 'cheerful mexican'],
+  salsa:    ['salsa', 'montuno piano', 'congas and timbales', 'brass stabs', 'tropical dance'],
+  hiphop:   ['kid friendly hip hop', 'boom bap drums', 'playful bassline', 'fun rap flow', 'clean'],
+  disco:    ['disco funk', 'four on the floor', 'slap bass', 'strings and claps', 'groovy'],
+  electro:  ['kids edm dance', 'festival synths', 'big drop', 'energetic build', 'bright'],
+  balada:   ['balada latina', 'piano and strings', 'emotional', 'gentle tempo'],
+  navidad:  ['christmas song', 'sleigh bells', 'festive choir', 'warm and joyful'],
+  sueno:    ['gentle lullaby pop', 'soft piano', 'dreamy pads', 'warm and calm'],
 };
+
+const VOICE_PROMPTS = {
+  nina:   ['young girl lead vocals', 'child singer', 'sweet bright voice'],
+  nino:   ['young boy lead vocals', 'child singer', 'playful bright voice'],
+  mujer:  ['female lead vocals', 'adult woman singer', 'clear warm voice'],
+  hombre: ['male lead vocals', 'adult man singer', 'clear warm voice'],
+  coro:   ['kids choir vocals', 'group of children singing together', 'unison chorus'],
+};
+const VOICE_NEGATIVE = {
+  nina:   ['male vocals', 'deep voice'],
+  nino:   ['female vocals', 'deep voice'],
+  mujer:  ['male vocals', 'child vocals'],
+  hombre: ['female vocals', 'child vocals'],
+  coro:   ['solo vocals'],
+};
+
 
 const today = () => new Date().toISOString().slice(0, 10);
 const month = () => new Date().toISOString().slice(0, 7);
@@ -51,11 +77,12 @@ function normalizeLines(lyrics) {
   return out.map(l => l.slice(0, 200)).slice(0, 24);
 }
 
-function buildPlan(lyrics, style, bpm, seconds) {
+function buildPlan(lyrics, style, bpm, seconds, voice) {
   const lines = normalizeLines(lyrics);
   const styles = STYLE_PROMPTS[style] || STYLE_PROMPTS.pop;
-  const base = [...styles, `${bpm} bpm`, 'child-friendly', 'clear vocals', 'spanish lyrics', 'kid singer', 'great production quality'];
-  const negative = ['explicit', 'dark', 'aggressive', 'sad'];
+  const vox = VOICE_PROMPTS[voice] || VOICE_PROMPTS.nina;
+  const base = [...styles, ...vox, `${bpm} bpm`, 'child-friendly lyrics', 'clear diction', 'spanish lyrics', 'great production quality'];
+  const negative = ['explicit', 'dark', 'aggressive', 'sad', ...(VOICE_NEGATIVE[voice] || VOICE_NEGATIVE.nina)];
   // Máximo 2 trozos (verso y coro) para canciones cortas
   const half = Math.ceil(lines.length / 2);
   const parts = lines.length <= 4
@@ -66,7 +93,7 @@ function buildPlan(lyrics, style, bpm, seconds) {
     chunks: parts.map((s, i) => ({
       text: `[${s.name}]\n` + s.lines.join('\n'),
       duration_ms: per,
-      positive_styles: i === 0 ? base : [...styles.slice(0, 2), 'catchy', 'bigger drums'],
+      positive_styles: i === 0 ? base : [...styles.slice(0, 2), ...vox.slice(0, 1), 'catchy', 'bigger drums'],
       negative_styles: negative,
     })),
   };
@@ -100,6 +127,7 @@ export default {
       const device = String(body.device || 'anon').slice(0, 64);
       const lyrics = String(body.lyrics || '').slice(0, 2000);
       const style = String(body.style || 'pop');
+      const voice = String(body.voice || 'nina');
       const bpm = Math.min(160, Math.max(70, parseInt(body.bpm || '110', 10)));
       const seconds = Math.min(60, Math.max(20, parseInt(body.seconds || '30', 10)));
       if (!lyrics.trim()) return json({ error: 'Falta la letra' }, 400);
@@ -121,7 +149,7 @@ export default {
       if (!sub && usedMonth + cost > MONTH_CREDITS) return json({ error: 'Se acabaron las canciones de este mes 😴' }, 429);
       if (!parentOk && usedToday >= DAILY) return json({ error: 'Ya usaste tus monedas de hoy. Pide el PIN a un adulto 🔐', needPin: true }, 429);
 
-      const plan = buildPlan(lyrics, style, bpm, seconds);
+      const plan = buildPlan(lyrics, style, bpm, seconds, voice);
       const call = () => fetch('https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128', {
         method: 'POST',
         headers: { 'xi-api-key': env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },

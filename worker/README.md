@@ -2,8 +2,16 @@
 
 Intermediario gratuito en Cloudflare que guarda la llave de ElevenLabs y limita el uso.
 
+## Protecciones (nadie más puede gastar tus créditos)
+1. **Origen permitido.** Solo acepta peticiones que vengan de `lparra-alku.github.io`. Un `curl` desde una terminal recibe 403.
+2. **Turnstile de Cloudflare.** Cada canción exige un token nuevo que prueba que quien pide es un navegador real con la app abierta. En modo gestionado: normalmente invisible, y si hay duda muestra una casilla en vez de dejar al niño atorado.
+3. **Tope global diario.** Máximo 40 canciones al día entre todos los usuarios (`DAILY_GLOBAL_SONGS`). Es el seguro contra sorpresas: pase lo que pase, el gasto del día está acotado.
+4. **Límite por conexión.** 6 canciones por hora y 12 al día desde una misma IP (`IP_HOUR`, `IP_DAY`). Frena a quien borre los datos del navegador para reiniciar sus monedas.
+
+Si algo falla y hay que desactivar la verificación de emergencia: pon `REQUIRE_TURNSTILE = "0"` en `wrangler.toml` y vuelve a publicar.
+
 ## Reglas que aplica
-- 5 canciones con IA por iPad por día (`DAILY_PER_DEVICE` en wrangler.toml).
+- 5 canciones con IA por iPad por día (`DAILY_PER_DEVICE`) (`DAILY_PER_DEVICE` en wrangler.toml).
 - El Worker consulta el saldo REAL de ElevenLabs antes de cada canción y deja una reserva de 1,000 créditos (`RESERVE_CREDITS`). El contador propio (`MONTHLY_CREDITS`) solo se usa de respaldo.
 - Canciones de 30 segundos (450 créditos cada una), máximo 60.
 - PIN de adulto para saltarse el límite diario (`PARENT_PIN`).
@@ -43,3 +51,9 @@ y poner `WORKER_URL = 'http://localhost:8787'` en `index.html`.
 
 ## Cambiar límites
 Editar `[vars]` en `wrangler.toml` y volver a ejecutar `npx wrangler deploy`.
+
+## Ver el estado
+```
+https://mila-music.mp-music.workers.dev/status
+```
+Muestra el saldo real de ElevenLabs, las canciones del día contra el tope global y el último error.

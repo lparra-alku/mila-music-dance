@@ -83,6 +83,7 @@
       <h2>🪙 Monedas de hoy: <span id="coins">…</span></h2>
       <p class="hint">Cada canción con IA de verdad cuesta una moneda. Se recargan cada día.</p>
     </div>
+    <div id="tsbox" style="display:flex;justify-content:center"></div>
     <button class="big pink" id="btnMakeAI" style="display:none">🤖 ¡Crear con IA (canta de verdad)!</button>
     <button class="big" id="btnMake">🎹 ¡Crear rápido (sin conexión)!</button>
     <div class="row">
@@ -134,7 +135,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
-<div id="tsbox" style="position:fixed;left:-9999px;top:0"></div>
+
 <script>
 /* ===================== DATOS ===================== */
 const STYLES = [
@@ -258,13 +259,13 @@ const STEPS=[
 const WORKER_URL = 'https://mila-music.mp-music.workers.dev';
 const TURNSTILE_KEY = '0x4AAAAAAE9g-jxPocr4anvv';
 let tsWidget=null;
-function tsReady(){ return new Promise(res=>{ const go=()=>{ if(tsWidget===null && window.turnstile){ tsWidget=turnstile.render('#tsbox',{sitekey:TURNSTILE_KEY,size:'invisible'}); } res(!!window.turnstile); };
+function tsReady(){ return new Promise(res=>{ const go=()=>{ if(tsWidget===null && window.turnstile){ tsWidget=turnstile.render('#tsbox',{sitekey:TURNSTILE_KEY, execution:'execute', appearance:'interaction-only'}); } res(!!window.turnstile); };
   if(window.turnstile) go(); else { let n=0; const iv=setInterval(()=>{ if(window.turnstile||++n>40){ clearInterval(iv); go(); } },150); } }); }
 // Un token nuevo por canción: prueba que quien pide es la app real en un navegador
 async function tsToken(){
   if(!(await tsReady())) return null;
   try{ turnstile.reset(tsWidget); }catch(e){}
-  return await new Promise(res=>{ const to=setTimeout(()=>res(null),12000);
+  return await new Promise(res=>{ const to=setTimeout(()=>res(null),25000);
     try{ turnstile.execute(tsWidget,{callback:t=>{clearTimeout(to);res(t);},'error-callback':()=>{clearTimeout(to);res(null);}}); }catch(e){ clearTimeout(to); res(null); } });
 }
 const DEVICE_ID = (()=>{ try{ let d=localStorage.getItem('milaDevice'); if(!d){ d=Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('milaDevice',d);} return d; }catch{ return 'anon'; } })();
@@ -278,6 +279,7 @@ async function makeAISong(text, pin){
   const btn=document.getElementById('btnMakeAI'); btn.disabled=true; btn.textContent='🎶 Creando tu canción... (1 minuto)';
   try{
     const ts=await tsToken();
+    if(!ts){ alert('No pudimos verificar la app 🔒\nRevisa tu internet y vuelve a intentar.\nMientras tanto puedes usar "Crear rápido (sin conexión)".'); return null; }
     const r=await fetch(`${WORKER_URL}/song`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID,lyrics:text,style:style.id,voice:voice.id,bpm:style.bpm,seconds:30,ts,pin})});
     if(!r.ok){
       const j=await r.json().catch(()=>({error:'Error '+r.status}));

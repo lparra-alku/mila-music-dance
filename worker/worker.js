@@ -4,15 +4,24 @@
  *
  * Rutas:
  *   GET  /coins?device=ID          -> { coins, dailyLimit, monthLeft }
- *   POST /song  { device, lyrics, style, voice, bpm, seconds, pin? } -> audio/mpeg
+ *   POST /song  { device, lyrics, style, voice, bpm, seconds, ts, pin? } -> audio/mpeg
+ *   Protegido por: origen permitido, Turnstile, tope global diario y limite por IP.
  */
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
+// Solo la app publicada puede pedir canciones
+const ALLOWED_ORIGINS = [
+  'https://lparra-alku.github.io',
+  'http://localhost:8765',
+  'http://127.0.0.1:8765',
+];
+const baseCors = (origin) => ({
+  'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Expose-Headers': 'X-Coins, X-Month-Left',
-};
+  'Vary': 'Origin',
+});
+let CORS = baseCors('');
 
 const STYLE_PROMPTS = {
   pop:      ['upbeat kids pop', 'bright synths', 'catchy chorus', 'happy', 'modern radio production'],
@@ -101,6 +110,8 @@ function buildPlan(lyrics, style, bpm, seconds, voice) {
 
 export default {
   async fetch(req, env) {
+    const origin = req.headers.get('Origin') || '';
+    CORS = baseCors(origin);
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(req.url);
     const DAILY = parseInt(env.DAILY_PER_DEVICE || '2', 10);
@@ -119,10 +130,38 @@ export default {
       const j = await r.json().catch(() => ({}));
       const usedMonth = await counter(env, `global:${month()}`);
       const lastError = JSON.parse((await env.COINS.get('lasterror')) || 'null');
-      return json({ ultimo_error: lastError, elevenlabs: { plan: j.tier, usados: j.character_count, limite: j.character_limit, se_renueva: j.next_character_count_reset_unix ? new Date(j.next_character_count_reset_unix * 1000).toISOString() : null }, worker: { usados_mes: usedMonth, tope_mes: MONTH_CREDITS, restante: MONTH_CREDITS - usedMonth } });
+      return json({ ultimo_error: lastError, elevenlabs: { plan: j.tier, usados: j.character_count, limite: j.character_limit, se_renueva: j.next_character_count_reset_unix ? new Date(j.next_character_count_reset_unix * 1000).toISOString() : null }, worker: { usados_mes: usedMonth, tope_mes: MONTH_CREDITS, restante: MONTH_CREDITS - usedMonth, canciones_hoy: await counter(env, `globalday:${today()}`), tope_dia: parseInt(env.DAILY_GLOBAL_SONGS || '40', 10) } });
     }
 
     if (url.pathname === '/song' && req.method === 'POST') {
+      // 1) Solo desde la app publicada
+      if (!ALLOWED_ORIGINS.includes(origin)) return json({ error: 'Esta app no está autorizada.' }, 403);
+
+      // 2) Turnstile: comprueba que quien pide es un navegador real, no un script
+      const requireTs = (env.REQUIRE_TURNSTILE || '1') === '1';
+      if (requireTs && env.TURNSTILE_SECRET) {
+        const body0 = await req.clone().json().catch(() => ({}));
+        const tsToken = body0.ts;
+        if (!tsToken) return json({ error: 'Falta la verificación de seguridad. Recarga la app.' }, 403);
+        const form = new FormData();
+        form.append('secret', env.TURNSTILE_SECRET);
+        form.append('response', tsToken);
+        form.append('remoteip', req.headers.get('CF-Connecting-IP') || '');
+        const v = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form }).then(r => r.json()).catch(() => null);
+        if (!v || !v.success) return json({ error: 'No pudimos verificar la app. Recarga la página.' }, 403);
+      }
+
+      // 3) Tope global diario: por mucho que pase, el gasto del día está acotado
+      const GLOBAL_DAY = parseInt(env.DAILY_GLOBAL_SONGS || '40', 10);
+      const gKey = `globalday:${today()}`;
+      if ((await counter(env, gKey)) >= GLOBAL_DAY) return json({ error: 'Hoy ya se hicieron muchas canciones 😅 Vuelve mañana.' }, 429);
+
+      // 4) Límite por conexión (IP), contra quien borre los datos del navegador
+      const ip = req.headers.get('CF-Connecting-IP') || 'sin-ip';
+      const ipH = `ip:${ip}:${new Date().toISOString().slice(0, 13)}`, ipD = `ip:${ip}:${today()}`;
+      const IP_HOUR = parseInt(env.IP_HOUR || '6', 10), IP_DAY = parseInt(env.IP_DAY || '12', 10);
+      if ((await counter(env, ipH)) >= IP_HOUR || (await counter(env, ipD)) >= IP_DAY) return json({ error: 'Demasiadas canciones seguidas desde esta conexión. Descansa un rato 🎈' }, 429);
+
       let body; try { body = await req.json(); } catch { return json({ error: 'JSON inválido' }, 400); }
       const device = String(body.device || 'anon').slice(0, 64);
       const lyrics = String(body.lyrics || '').slice(0, 2000);
@@ -165,6 +204,9 @@ export default {
       // Cobra solo si salió bien
       if (!parentOk) await bump(env, devKey, 1, 60 * 60 * 48);
       await bump(env, monthKey, cost, 60 * 60 * 24 * 40);
+      await bump(env, `globalday:${today()}`, 1, 60 * 60 * 48);
+      await bump(env, `ip:${req.headers.get('CF-Connecting-IP') || 'sin-ip'}:${new Date().toISOString().slice(0, 13)}`, 1, 60 * 60 * 3);
+      await bump(env, `ip:${req.headers.get('CF-Connecting-IP') || 'sin-ip'}:${today()}`, 1, 60 * 60 * 48);
       const coins = Math.max(0, DAILY - (parentOk ? usedToday : usedToday + 1));
       return new Response(r.body, { headers: { 'Content-Type': 'audio/mpeg', ...CORS, 'X-Coins': String(coins), 'X-Month-Left': String(MONTH_CREDITS - usedMonth - cost) } });
     }

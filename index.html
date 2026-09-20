@@ -133,6 +133,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+<div id="tsbox" style="position:fixed;left:-9999px;top:0"></div>
 <script>
 /* ===================== DATOS ===================== */
 const STYLES = [
@@ -254,6 +256,17 @@ const STEPS=[
 /* ===================== IA (Worker de Cloudflare) ===================== */
 // Pega aquí la URL de tu Worker, ej: 'https://mila-music.<tu-usuario>.workers.dev'. Vacío = solo modo sin conexión.
 const WORKER_URL = 'https://mila-music.mp-music.workers.dev';
+const TURNSTILE_KEY = '0x4AAAAAAE9g-jxPocr4anvv';
+let tsWidget=null;
+function tsReady(){ return new Promise(res=>{ const go=()=>{ if(tsWidget===null && window.turnstile){ tsWidget=turnstile.render('#tsbox',{sitekey:TURNSTILE_KEY,size:'invisible'}); } res(!!window.turnstile); };
+  if(window.turnstile) go(); else { let n=0; const iv=setInterval(()=>{ if(window.turnstile||++n>40){ clearInterval(iv); go(); } },150); } }); }
+// Un token nuevo por canción: prueba que quien pide es la app real en un navegador
+async function tsToken(){
+  if(!(await tsReady())) return null;
+  try{ turnstile.reset(tsWidget); }catch(e){}
+  return await new Promise(res=>{ const to=setTimeout(()=>res(null),12000);
+    try{ turnstile.execute(tsWidget,{callback:t=>{clearTimeout(to);res(t);},'error-callback':()=>{clearTimeout(to);res(null);}}); }catch(e){ clearTimeout(to); res(null); } });
+}
 const DEVICE_ID = (()=>{ try{ let d=localStorage.getItem('milaDevice'); if(!d){ d=Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('milaDevice',d);} return d; }catch{ return 'anon'; } })();
 async function refreshCoins(){
   if(!WORKER_URL) return;
@@ -264,7 +277,8 @@ async function refreshCoins(){
 async function makeAISong(text, pin){
   const btn=document.getElementById('btnMakeAI'); btn.disabled=true; btn.textContent='🎶 Creando tu canción... (1 minuto)';
   try{
-    const r=await fetch(`${WORKER_URL}/song`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID,lyrics:text,style:style.id,voice:voice.id,bpm:style.bpm,seconds:30,pin})});
+    const ts=await tsToken();
+    const r=await fetch(`${WORKER_URL}/song`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID,lyrics:text,style:style.id,voice:voice.id,bpm:style.bpm,seconds:30,ts,pin})});
     if(!r.ok){
       const j=await r.json().catch(()=>({error:'Error '+r.status}));
       if(j.needPin){ const p=prompt('🔐 PIN de un adulto para otra canción:'); if(p) return makeAISong(text,p); }
@@ -685,7 +699,7 @@ $('btnMakeAI').onclick=async()=>{
   if(!text){ alert('¡Escribe tu letra primero! ✍️'); return; }
   stop(); const s=await makeAISong(text); if(s){ useSong(s, text); storeCurrent(text); }
 };
-refreshCoins(); renderLibrary();
+refreshCoins(); renderLibrary(); tsReady();
 $('btnRandom').onclick=()=>{ if(!song)return; autoChoreo(Math.floor(Math.random()*1e9)); };
 $('btnPlay0').onclick=$('btnPlay1').onclick=()=>{ play(); setStatusUI(); };
 $('btnStop0').onclick=$('btnStop1').onclick=()=>stop();

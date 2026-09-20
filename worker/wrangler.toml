@@ -6,6 +6,10 @@ compatibility_date = "2026-09-01"
 DAILY_PER_DEVICE = "5"      # canciones con IA por iPad por día
 MONTHLY_CREDITS = "38000"   # respaldo si no se puede leer el saldo real de ElevenLabs
 RESERVE_CREDITS = "1000"    # reserva que nunca se gasta
+DAILY_GLOBAL_SONGS = "40"   # tope de canciones al dia entre TODOS los usuarios
+IP_HOUR = "6"               # canciones por hora desde una misma conexion
+IP_DAY = "12"               # canciones al dia desde una misma conexion
+REQUIRE_TURNSTILE = "1"     # pon "0" para desactivar la verificacion en una emergencia
 
 # Crear con:  npx wrangler kv namespace create COINS
 # y pegar el id que devuelve aquí:

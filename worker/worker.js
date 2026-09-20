@@ -78,7 +78,7 @@ export default {
     const url = new URL(req.url);
     const DAILY = parseInt(env.DAILY_PER_DEVICE || '2', 10);
     const MONTH_CREDITS = parseInt(env.MONTHLY_CREDITS || '9000', 10);
-    const CREDITS_PER_SEC = 15; // 900 créditos por minuto en ElevenLabs
+    const CREDITS_PER_SEC = 12.5; // ElevenLabs cobra ~375 créditos por canción de 30 s
 
     if (url.pathname === '/coins') {
       const device = url.searchParams.get('device') || 'anon';
@@ -114,7 +114,11 @@ export default {
       const usedMonth = await counter(env, monthKey);
       const parentOk = env.PARENT_PIN && body.pin === env.PARENT_PIN;
 
-      if (usedMonth + cost > MONTH_CREDITS) return json({ error: 'Se acabaron las canciones de este mes 😴' }, 429);
+      // Saldo REAL de ElevenLabs (deja una reserva de seguridad)
+      const RESERVE = parseInt(env.RESERVE_CREDITS || '1000', 10);
+      const sub = await fetch('https://api.elevenlabs.io/v1/user/subscription', { headers: { 'xi-api-key': env.ELEVENLABS_API_KEY } }).then(r => r.json()).catch(() => null);
+      if (sub && sub.character_limit && sub.character_limit - sub.character_count - RESERVE < cost) return json({ error: 'Se acabaron las canciones de este mes 😴 Se renuevan el ' + (sub.next_character_count_reset_unix ? new Date(sub.next_character_count_reset_unix * 1000).toLocaleDateString('es-MX') : 'próximo ciclo') }, 429);
+      if (!sub && usedMonth + cost > MONTH_CREDITS) return json({ error: 'Se acabaron las canciones de este mes 😴' }, 429);
       if (!parentOk && usedToday >= DAILY) return json({ error: 'Ya usaste tus monedas de hoy. Pide el PIN a un adulto 🔐', needPin: true }, 429);
 
       const plan = buildPlan(lyrics, style, bpm, seconds);

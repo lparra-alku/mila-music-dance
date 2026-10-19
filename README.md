@@ -1,4 +1,4 @@
-# Mila Music Dance — MVP v0
+# Music Dance — MVP v0
 
 Juego web de un solo archivo (`index.html`). Sin cuenta de desarrollador, sin servidores de pago, sin APIs de pago.
 

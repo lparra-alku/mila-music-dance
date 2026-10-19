@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Mila Music Dance</title>
+<title>Music Dance</title>
 <style>
   :root{
     --bg:#1a0b3d; --card:#2b1466; --accent:#ff4fa3; --accent2:#ffd43b; --accent3:#4fe3ff; --text:#fff;
@@ -56,7 +56,7 @@
 <body>
 <div id="app">
   <header>
-    <h1>🎤 Mila Music Dance</h1>
+    <h1>🎤 Music Dance</h1>
     <div class="steps">
       <button class="active" data-tab="0">1 Letra</button>
       <button data-tab="1">2 Baile</button>
@@ -146,7 +146,7 @@ async function nativeShare(file){
   const data=await blobToB64(file);
   await Filesystem.writeFile({path:file.name, data, directory:'CACHE'});
   const {uri}=await Filesystem.getUri({path:file.name, directory:'CACHE'});
-  await Share.share({title:'Mila Music Dance', text:'¡Mira mi canción! 🎶', url:uri});
+  await Share.share({title:'Music Dance', text:'¡Mira mi canción! 🎶', url:uri});
 }
 if(NATIVE && PLAT==='android') document.documentElement.style.setProperty('--sat','30px');
 if(NATIVE){ document.addEventListener('DOMContentLoaded',()=>{ const {StatusBar,SplashScreen}=window.Capacitor.Plugins;
@@ -513,7 +513,7 @@ function draw(canvas, t){
   const lift=Math.max(0,-pose.y);
   if(t>=0 && step.energy>=3 && lift>40){ const cy=groundY-120*s-lift*s*0.8; for(let i=0;i<14;i++){ const ang=i/14*Math.PI*2+beatN, rad=(90+lift*1.2)*s*0.6; c.fillStyle=`hsl(${(i*26+beatN*50)%360},100%,70%)`; c.beginPath(); c.arc(cx+Math.cos(ang)*rad, cy+Math.sin(ang)*rad*0.8, 5+flash*7,0,7); c.fill(); } }
   c.textAlign='center'; c.fillStyle='rgba(255,255,255,.85)'; c.font='bold 36px sans-serif';
-  c.fillText('MILA MUSIC DANCE', W/2, 70);
+  c.fillText('MUSIC DANCE', W/2, 70);
   if(song && t>=0){
     const line = song.lines.find(l=>t>=l.start-0.2&&t<l.end);
     c.fillStyle='#ffd43b'; c.font='bold 46px sans-serif'; wrap(c, line?line.text:'♪ ♪ ♪', W/2, H*0.87, W-80, 54);
@@ -619,7 +619,7 @@ async function shareOrDownload(file){
   setStatus('✅ ¡Listo!');
   if(NATIVE){ try{ await nativeShare(file); return; }catch(e){ setStatus('😢 No se pudo compartir: '+e.message); return; } }
   if(navigator.canShare && navigator.canShare({files:[file]})){
-    try{ await navigator.share({files:[file], title:'Mi canción con Mila Music Dance'}); return; }catch(e){}
+    try{ await navigator.share({files:[file], title:'Mi canción con Music Dance'}); return; }catch(e){}
   }
   const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name; a.click();
 }

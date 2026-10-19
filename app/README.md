@@ -1,4 +1,4 @@
-# Mila Music Dance — app nativa (iOS y Android)
+# Music Dance — app nativa (iOS y Android)
 
 Envoltorio con Capacitor 7 de la misma app web (`../index.html`). Una sola fuente de código:
 lo que cambias en la web llega a las apps con `npm run sync`.

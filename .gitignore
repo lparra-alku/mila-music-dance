@@ -6,3 +6,4 @@ primera-cancion.mp3
 .wrangler/
 app/node_modules/
 app/www/
+app/android/.idea/

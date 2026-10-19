@@ -12,7 +12,7 @@
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
   html,body{margin:0; height:100%; background:var(--bg); color:var(--text); font-family:-apple-system,"Helvetica Neue",Arial,sans-serif; overflow:hidden;}
-  #app{height:100%; display:flex; flex-direction:column; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);}
+  #app{height:100%; display:flex; flex-direction:column; padding-top:max(env(safe-area-inset-top), var(--sat, 0px)); padding-bottom:env(safe-area-inset-bottom);}
   header{display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:linear-gradient(90deg,#ff4fa3,#7b4fff);}
   header h1{margin:0; font-size:22px; letter-spacing:1px;}
   .steps{display:flex; gap:6px;}
@@ -148,6 +148,7 @@ async function nativeShare(file){
   const {uri}=await Filesystem.getUri({path:file.name, directory:'CACHE'});
   await Share.share({title:'Mila Music Dance', text:'¡Mira mi canción! 🎶', url:uri});
 }
+if(NATIVE && PLAT==='android') document.documentElement.style.setProperty('--sat','30px');
 if(NATIVE){ document.addEventListener('DOMContentLoaded',()=>{ const {StatusBar,SplashScreen}=window.Capacitor.Plugins;
   try{ StatusBar.setStyle({style:'DARK'}); if(PLAT==='android') StatusBar.setBackgroundColor({color:'#ff4fa3'}); }catch(e){}
   try{ SplashScreen.hide(); }catch(e){} }); }

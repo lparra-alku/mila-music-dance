@@ -7,7 +7,7 @@
     "build": "node scripts/build.mjs",
     "sync": "npm run build && npx cap sync",
     "ios": "npm run sync && npx cap open ios",
-    "android": "npm run sync && npx cap open android"
+    "android": "npm run sync && open -a \"Android Studio\" android"
   },
   "keywords": [],
   "author": "",

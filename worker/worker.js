@@ -96,6 +96,68 @@ function makeCode(prefix) {
   const r = crypto.getRandomValues(new Uint8Array(6));
   return `${prefix}-` + [...r].map(b => CODE_ABC[b % CODE_ABC.length]).join('');
 }
+/* ===================== CUENTA FAMILIAR =====================
+ * El saldo comprado y los códigos de promoción viven en la cuenta, no en el dispositivo.
+ * Acceso con un código familiar secreto (80 bits). El servidor solo guarda su huella SHA-256.
+ * Cada dispositivo enlazado recibe una sesión; con ella el uid efectivo es "acct_<id>".
+ */
+async function sha256(t) {
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t));
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function randomId(n) { return [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join(''); }
+function makeFamilyCode() {
+  const r = crypto.getRandomValues(new Uint8Array(16));
+  const c = [...r].map(b => CODE_ABC[b % CODE_ABC.length]).join('');
+  return `FAM-${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8, 12)}-${c.slice(12, 16)}`;
+}
+const normFamily = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^FAM/, '');
+async function familyKey(code) { return `fam:${await sha256('fam:' + normFamily(code))}`; }
+async function sessionAccount(env, session) {
+  if (!session || typeof session !== 'string' || session.length < 32) return null;
+  const id = await env.COINS.get(`sess:${await sha256(session)}`);
+  if (!id) return null;
+  const a = JSON.parse((await env.COINS.get(`acct:${id}`)) || 'null');
+  return a;
+}
+// uid efectivo: la cuenta si la sesión es válida; si no, el dispositivo
+async function resolveUid(env, device, session) {
+  const a = await sessionAccount(env, session);
+  return a ? `acct_${a.id}` : cleanUid(device);
+}
+// Pasa el saldo comprado y la promo del dispositivo a la cuenta, una sola vez
+async function mergeDeviceIntoAccount(env, device, acctUid) {
+  const dev = cleanUid(device);
+  if (dev === 'anon' || dev.startsWith('acct_')) return 0;
+  const dw = await getWallet(env, dev);
+  if (!dw.paid && !dw.promo) return 0;
+  const aw = await getWallet(env, acctUid);
+  const moved = dw.paid;
+  aw.paid += moved;
+  if (dw.promo && (!aw.promo || dw.promo.daily > aw.promo.daily)) aw.promo = dw.promo;
+  aw.log.push({ t: new Date().toISOString(), delta: moved, why: `traspaso desde dispositivo` });
+  dw.paid = 0; dw.promo = null;
+  dw.log.push({ t: new Date().toISOString(), delta: -moved, why: `traspaso a la cuenta` });
+  await saveWallet(env, acctUid, aw);
+  await saveWallet(env, dev, dw);
+  return moved;
+}
+async function newSession(env, acct, device) {
+  const token = randomId(32);
+  await env.COINS.put(`sess:${await sha256(token)}`, acct.id);
+  acct.sessions = [...(acct.sessions || []), await sha256(token)].slice(-20);
+  acct.devices = [...new Set([...(acct.devices || []), cleanUid(device)])].slice(-20);
+  await env.COINS.put(`acct:${acct.id}`, JSON.stringify(acct));
+  return token;
+}
+async function ipLimit(env, req, name, max) {
+  const ip = req.headers.get('CF-Connecting-IP') || 'sin-ip';
+  const k = `${name}:${ip}:${new Date().toISOString().slice(0, 13)}`;
+  if ((await counter(env, k)) >= max) return false;
+  await bump(env, k, 1, 60 * 60 * 2);
+  return true;
+}
+
 const cleanCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 32);
 const cleanUid = (v) => String(v || 'anon').replace(/[^A-Za-z0-9_\-:.]/g, '').slice(0, 64) || 'anon';
 
@@ -159,7 +221,8 @@ export default {
 
     // Saldo del monedero
     if (url.pathname === '/wallet' && req.method === 'GET') {
-      return json(await walletView(env, cleanUid(url.searchParams.get('uid')), FREE));
+      const uidQ = await resolveUid(env, url.searchParams.get('uid'), url.searchParams.get('session'));
+      return json({ ...(await walletView(env, uidQ, FREE)), account: uidQ.startsWith('acct_') });
     }
 
     // Abonar monedas compradas. Solo con la llave de administrador (después: aviso de RevenueCat).
@@ -177,6 +240,67 @@ export default {
       await saveWallet(env, uid, w);
       await env.COINS.put(`grant:${ref}`, uid);
       return json({ ok: true, ...(await walletView(env, uid, FREE)) });
+    }
+
+    // ---- Cuenta familiar ----
+    if (url.pathname.startsWith('/account/') && req.method === 'POST') {
+      if (!ALLOWED_ORIGINS.includes(origin)) return json({ error: 'Esta app no está autorizada.' }, 403);
+      const b = await req.json().catch(() => ({}));
+      const op = url.pathname.slice('/account/'.length);
+
+      if (op === 'create') {
+        if (!(await ipLimit(env, req, 'acctnew', 5))) return json({ error: 'Demasiadas cuentas nuevas desde esta conexión. Prueba en una hora.' }, 429);
+        const acct = { id: randomId(12), created: new Date().toISOString(), sessions: [], devices: [] };
+        const code = makeFamilyCode();
+        acct.codeKey = await familyKey(code);
+        await env.COINS.put(acct.codeKey, acct.id);
+        const session = await newSession(env, acct, b.device);
+        const moved = await mergeDeviceIntoAccount(env, b.device, `acct_${acct.id}`);
+        return json({ ok: true, familyCode: code, session, moved, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+      }
+
+      if (op === 'link') {
+        if (!(await ipLimit(env, req, 'acctlink', 10))) return json({ error: 'Demasiados intentos. Prueba en una hora.' }, 429);
+        const id = await env.COINS.get(await familyKey(b.code));
+        const acct = id && JSON.parse((await env.COINS.get(`acct:${id}`)) || 'null');
+        if (!acct) return json({ error: 'Ese código familiar no existe. Revísalo letra por letra.' }, 404);
+        const session = await newSession(env, acct, b.device);
+        const moved = await mergeDeviceIntoAccount(env, b.device, `acct_${acct.id}`);
+        return json({ ok: true, session, moved, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+      }
+
+      const acct = await sessionAccount(env, b.session);
+      if (!acct) return json({ error: 'La sesión ya no es válida. Vuelve a entrar con tu código familiar.', noSession: true }, 401);
+
+      if (op === 'me') {
+        return json({ ok: true, created: acct.created, devices: (acct.devices || []).length, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+      }
+      if (op === 'logout') {
+        const h = await sha256(b.session);
+        await env.COINS.delete(`sess:${h}`);
+        acct.sessions = (acct.sessions || []).filter(x => x !== h);
+        await env.COINS.put(`acct:${acct.id}`, JSON.stringify(acct));
+        return json({ ok: true });
+      }
+      if (op === 'rotate') {
+        // Código nuevo: el anterior deja de servir. Las sesiones abiertas siguen activas.
+        await env.COINS.delete(acct.codeKey);
+        const code = makeFamilyCode();
+        acct.codeKey = await familyKey(code);
+        await env.COINS.put(acct.codeKey, acct.id);
+        await env.COINS.put(`acct:${acct.id}`, JSON.stringify(acct));
+        return json({ ok: true, familyCode: code });
+      }
+      if (op === 'delete') {
+        // Borrado completo (requisito de Apple): cuenta, código, sesiones y saldo
+        if (b.confirm !== 'BORRAR') return json({ error: 'Falta confirmar' }, 400);
+        for (const h of acct.sessions || []) await env.COINS.delete(`sess:${h}`);
+        await env.COINS.delete(acct.codeKey);
+        await env.COINS.delete(`wallet:acct_${acct.id}`);
+        await env.COINS.delete(`acct:${acct.id}`);
+        return json({ ok: true, borrada: true });
+      }
+      return json({ error: 'Operación desconocida' }, 404);
     }
 
     // Crear un código de promoción (solo administrador)
@@ -215,7 +339,7 @@ export default {
       if ((await counter(env, tryKey)) >= 10) return json({ error: 'Demasiados intentos. Prueba en una hora.' }, 429);
       await bump(env, tryKey, 1, 60 * 60 * 2);
       const b = await req.json().catch(() => ({}));
-      const uid = cleanUid(b.uid), code = cleanCode(b.code);
+      const uid = await resolveUid(env, b.uid, b.session), code = cleanCode(b.code);
       if (uid === 'anon' || !code) return json({ error: 'Escribe el código' }, 400);
       const promo = JSON.parse((await env.COINS.get(`promo:${code}`)) || 'null');
       if (!promo || !promo.active) return json({ error: 'Ese código no existe o ya no está activo.' }, 404);
@@ -266,7 +390,7 @@ export default {
 
       // 3) ¿De qué bolsillo se paga esta canción? Gratis primero, luego compradas.
       const b0 = await req.clone().json().catch(() => ({}));
-      const uid = cleanUid(b0.device);
+      const uid = await resolveUid(env, b0.device, b0.session);
       const wv = await walletView(env, uid, FREE);
       if (wv.total <= 0) return json({ error: 'Se acabaron tus monedas 🪙 Pídele a un adulto que consiga más.', needCoins: true, ...wv }, 402);
       const payWithFree = wv.free > 0;

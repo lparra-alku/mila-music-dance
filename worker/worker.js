@@ -13,6 +13,8 @@ const ALLOWED_ORIGINS = [
   'https://lparra-alku.github.io',
   'http://localhost:8765',
   'http://127.0.0.1:8765',
+  'https://localhost',        // app nativa iOS y Android (Capacitor)
+  'capacitor://localhost',
 ];
 const baseCors = (origin) => ({
   'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],

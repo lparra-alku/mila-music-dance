@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mila Music Dance</string>
+    <string name="title_activity_main">Mila Music Dance</string>
+    <string name="package_name">com.milaparra.musicdance</string>
+    <string name="custom_url_scheme">com.milaparra.musicdance</string>
+</resources>

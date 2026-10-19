@@ -1,0 +1,24 @@
+{
+  "appId": "com.milaparra.musicdance",
+  "appName": "Mila Music Dance",
+  "webDir": "www",
+  "server": {
+    "iosScheme": "https",
+    "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#1a0b3d",
+    "packageManager": "SPM"
+  },
+  "android": {
+    "backgroundColor": "#1a0b3d"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#1a0b3d",
+      "showSpinner": false
+    }
+  }
+}

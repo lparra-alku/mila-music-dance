@@ -4,3 +4,5 @@ worker/.wrangler/
 primera-cancion.mp3
 .claude/
 .wrangler/
+app/node_modules/
+app/www/

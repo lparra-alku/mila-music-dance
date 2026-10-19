@@ -12,7 +12,7 @@
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
   html,body{margin:0; height:100%; background:var(--bg); color:var(--text); font-family:-apple-system,"Helvetica Neue",Arial,sans-serif; overflow:hidden;}
-  #app{height:100%; display:flex; flex-direction:column;}
+  #app{height:100%; display:flex; flex-direction:column; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);}
   header{display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:linear-gradient(90deg,#ff4fa3,#7b4fff);}
   header h1{margin:0; font-size:22px; letter-spacing:1px;}
   .steps{display:flex; gap:6px;}
@@ -133,10 +133,25 @@
   </main>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+<script src="lame.min.js"></script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 
 <script>
+/* ===================== PUENTE NATIVO (iOS / Android) ===================== */
+const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const PLAT = NATIVE ? window.Capacitor.getPlatform() : 'web';
+function blobToB64(b){ return new Promise(res=>{ const r=new FileReader(); r.onloadend=()=>res(String(r.result).split(',')[1]); r.readAsDataURL(b); }); }
+async function nativeShare(file){
+  const {Filesystem, Share}=window.Capacitor.Plugins;
+  const data=await blobToB64(file);
+  await Filesystem.writeFile({path:file.name, data, directory:'CACHE'});
+  const {uri}=await Filesystem.getUri({path:file.name, directory:'CACHE'});
+  await Share.share({title:'Mila Music Dance', text:'¡Mira mi canción! 🎶', url:uri});
+}
+if(NATIVE){ document.addEventListener('DOMContentLoaded',()=>{ const {StatusBar,SplashScreen}=window.Capacitor.Plugins;
+  try{ StatusBar.setStyle({style:'DARK'}); if(PLAT==='android') StatusBar.setBackgroundColor({color:'#ff4fa3'}); }catch(e){}
+  try{ SplashScreen.hide(); }catch(e){} }); }
+
 /* ===================== DATOS ===================== */
 const STYLES = [
   {id:'pop',      name:'🌈 Pop',       bpm:120, prog:[0,7,9,5], drums:'pop'},
@@ -601,6 +616,7 @@ async function exportVideo(){
 }
 async function shareOrDownload(file){
   setStatus('✅ ¡Listo!');
+  if(NATIVE){ try{ await nativeShare(file); return; }catch(e){ setStatus('😢 No se pudo compartir: '+e.message); return; } }
   if(navigator.canShare && navigator.canShare({files:[file]})){
     try{ await navigator.share({files:[file], title:'Mi canción con Mila Music Dance'}); return; }catch(e){}
   }

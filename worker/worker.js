@@ -79,12 +79,24 @@ async function saveWallet(env, uid, w) {
   w.log = (w.log || []).slice(-WALLET_LOG);
   await env.COINS.put(`wallet:${uid}`, JSON.stringify(w));
 }
+function promoActive(w) {
+  return w.promo && (!w.promo.until || w.promo.until > new Date().toISOString()) ? w.promo : null;
+}
 async function walletView(env, uid, FREE) {
   const usedFree = await counter(env, `dev:${uid}:${today()}`);
   const w = await getWallet(env, uid);
-  const free = Math.max(0, FREE - usedFree);
-  return { free, freeMax: FREE, paid: w.paid, total: free + w.paid };
+  const pr = promoActive(w);
+  const daily = Math.max(FREE, pr ? pr.daily : 0);
+  const free = Math.max(0, daily - usedFree);
+  return { free, freeMax: daily, paid: w.paid, total: free + w.paid, promo: pr ? { code: pr.code, daily: pr.daily, until: pr.until || null } : null };
 }
+// Códigos legibles: sin 0/O ni 1/I para que no se confundan al teclearlos
+const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function makeCode(prefix) {
+  const r = crypto.getRandomValues(new Uint8Array(6));
+  return `${prefix}-` + [...r].map(b => CODE_ABC[b % CODE_ABC.length]).join('');
+}
+const cleanCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 32);
 const cleanUid = (v) => String(v || 'anon').replace(/[^A-Za-z0-9_\-:.]/g, '').slice(0, 64) || 'anon';
 
 async function bump(env, key, by, ttl) { await env.COINS.put(key, String((await counter(env, key)) + by), { expirationTtl: ttl }); }
@@ -164,6 +176,58 @@ export default {
       w.log.push({ t: new Date().toISOString(), delta: coins, why: String(b.reason || 'abono').slice(0, 60), ref });
       await saveWallet(env, uid, w);
       await env.COINS.put(`grant:${ref}`, uid);
+      return json({ ok: true, ...(await walletView(env, uid, FREE)) });
+    }
+
+    // Crear un código de promoción (solo administrador)
+    // { daily: monedas gratis al día, maxUses: cuántas personas, days: días de beneficio (0 = sin fin), code?: propio, label? }
+    if (url.pathname === '/promo/create' && req.method === 'POST') {
+      if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);
+      const b = await req.json().catch(() => ({}));
+      const daily = Math.min(20, Math.max(1, parseInt(b.daily || '5', 10)));
+      const maxUses = Math.min(10000, Math.max(1, parseInt(b.maxUses || '50', 10)));
+      const days = Math.max(0, parseInt(b.days || '0', 10));
+      const code = b.code ? cleanCode(b.code) : makeCode('MUSIC');
+      if (code.length < 6) return json({ error: 'El código debe tener al menos 6 caracteres' }, 400);
+      if (await env.COINS.get(`promo:${code}`)) return json({ error: 'Ese código ya existe' }, 409);
+      const promo = { code, daily, maxUses, uses: 0, days, label: String(b.label || '').slice(0, 60), created: new Date().toISOString(), active: true };
+      await env.COINS.put(`promo:${code}`, JSON.stringify(promo));
+      return json({ ok: true, ...promo });
+    }
+
+    // Consultar o desactivar un código (solo administrador)
+    if (url.pathname === '/promo/info' && req.method === 'POST') {
+      if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);
+      const b = await req.json().catch(() => ({}));
+      const code = cleanCode(b.code);
+      const promo = JSON.parse((await env.COINS.get(`promo:${code}`)) || 'null');
+      if (!promo) return json({ error: 'No existe' }, 404);
+      if (b.active === false) { promo.active = false; await env.COINS.put(`promo:${code}`, JSON.stringify(promo)); }
+      return json(promo);
+    }
+
+    // Canjear un código desde la app
+    if (url.pathname === '/promo/redeem' && req.method === 'POST') {
+      if (!ALLOWED_ORIGINS.includes(origin)) return json({ error: 'Esta app no está autorizada.' }, 403);
+      // Freno contra quien intente adivinar códigos: 10 intentos por hora por conexión
+      const ip = req.headers.get('CF-Connecting-IP') || 'sin-ip';
+      const tryKey = `promotry:${ip}:${new Date().toISOString().slice(0, 13)}`;
+      if ((await counter(env, tryKey)) >= 10) return json({ error: 'Demasiados intentos. Prueba en una hora.' }, 429);
+      await bump(env, tryKey, 1, 60 * 60 * 2);
+      const b = await req.json().catch(() => ({}));
+      const uid = cleanUid(b.uid), code = cleanCode(b.code);
+      if (uid === 'anon' || !code) return json({ error: 'Escribe el código' }, 400);
+      const promo = JSON.parse((await env.COINS.get(`promo:${code}`)) || 'null');
+      if (!promo || !promo.active) return json({ error: 'Ese código no existe o ya no está activo.' }, 404);
+      const w = await getWallet(env, uid);
+      if (w.promo && w.promo.code === code) return json({ ok: true, yaTenias: true, ...(await walletView(env, uid, FREE)) });
+      if (promo.uses >= promo.maxUses) return json({ error: 'Ese código ya se usó todas las veces posibles.' }, 410);
+      promo.uses += 1;
+      await env.COINS.put(`promo:${code}`, JSON.stringify(promo));
+      const until = promo.days ? new Date(Date.now() + promo.days * 86400000).toISOString() : null;
+      w.promo = { code, daily: promo.daily, until, since: new Date().toISOString() };
+      w.log.push({ t: new Date().toISOString(), delta: 0, why: `promo ${code}` });
+      await saveWallet(env, uid, w);
       return json({ ok: true, ...(await walletView(env, uid, FREE)) });
     }
 

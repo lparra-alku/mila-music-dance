@@ -65,6 +65,11 @@
   .pack b{font-size:19px;} .pack small{display:block; opacity:.7;}
   .pack button{border:0; border-radius:12px; padding:10px 14px; font-weight:800; font-size:16px; background:var(--accent2); color:#1a0b3d;}
   .pack button:disabled{opacity:.45;}
+  .promo{background:#1a0b3d; border-radius:16px; padding:14px; margin-top:12px; text-align:left;}
+  .promoRow{display:flex; gap:8px; margin-top:8px;}
+  .promoRow input{flex:1; min-width:0; border:0; border-radius:12px; padding:10px 12px; font-size:17px; font-weight:700; letter-spacing:1px; text-transform:uppercase; user-select:text;}
+  .promoRow button{border:0; border-radius:12px; padding:10px 14px; font-weight:800; font-size:16px; background:var(--accent3); color:#1a0b3d;}
+  .promoMsg{min-height:20px; font-size:14px; margin-top:8px;}
   .linkbtn{background:none; border:0; color:#fff; opacity:.7; font-size:15px; margin-top:8px; text-decoration:underline;}
   #coinsCard .row2{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
   #btnMoreCoins{border:0; border-radius:14px; padding:10px 14px; font-weight:800; font-size:15px; background:var(--accent2); color:#1a0b3d;}
@@ -171,6 +176,11 @@
     <p>Cada moneda es una canción cantada por la IA. Las monedas compradas no caducan.</p>
     <div id="shopPacks"></div>
     <p class="hint" id="shopNote">Las compras llegan muy pronto. Se pagarán con la cuenta de la tienda de tu teléfono.</p>
+    <div class="promo">
+      <b>🎁 ¿Tienes un código de promoción?</b>
+      <div class="promoRow"><input id="promoInput" placeholder="MUSIC-XXXXXX" autocapitalize="characters" autocomplete="off" spellcheck="false"><button id="promoBtn">Canjear</button></div>
+      <div class="promoMsg" id="promoMsg"></div>
+    </div>
     <button class="linkbtn" id="shopClose">Cerrar</button>
   </div>
 </div>
@@ -362,21 +372,37 @@ function parentGate(purpose){
 
 /* ===================== TIENDA ===================== */
 const PACKS=[{id:'coins_20',coins:20,price:'2.99 USD',tag:'Para empezar'},{id:'coins_80',coins:80,price:'9.99 USD',tag:'El favorito de las familias'}];
+async function redeemPromo(){
+  const code=$('promoInput').value.trim(), msg=$('promoMsg');
+  if(!code){ msg.textContent='Escribe el código.'; return; }
+  $('promoBtn').disabled=true; msg.textContent='Revisando…';
+  try{
+    const r=await fetch(`${WORKER_URL}/promo/redeem`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:DEVICE_ID,code})});
+    const j=await r.json();
+    if(!r.ok){ msg.textContent='😕 '+(j.error||'No se pudo canjear'); return; }
+    showWallet(j);
+    msg.textContent = j.yaTenias ? `✅ Ya tenías este código: ${j.promo.daily} canciones gratis cada día.` : `🎉 ¡Listo! Ahora tienes ${j.promo.daily} canciones gratis cada día${j.promo.until?' hasta el '+new Date(j.promo.until).toLocaleDateString('es-MX'):''}.`;
+    $('promoInput').value='';
+  }catch(e){ msg.textContent='Sin conexión. Inténtalo de nuevo.'; }
+  finally{ $('promoBtn').disabled=false; }
+}
 async function openShop(){
   if(!(await parentGate('Para entrar a la tienda, un adulto debe resolver esto.'))) return;
   const box=$('shopPacks'); box.innerHTML='';
   for(const p of PACKS){ const d=document.createElement('div'); d.className='pack';
     d.innerHTML=`<div><b>🪙 ${p.coins} canciones</b><small>${p.tag}</small></div><button disabled>${p.price}</button>`;
     box.appendChild(d); }
+  $('promoMsg').textContent='';
   $('shopModal').hidden=false;
 }
 
 let WALLET={free:0,freeMax:0,paid:0,total:0};
 function showWallet(w){
   WALLET=w; $('coins').textContent=w.total;
-  $('coinsDetail').textContent = w.paid>0
+  const promo = w.promo ? ` 🎁 Código ${w.promo.code}: ${w.promo.daily} gratis al día.` : '';
+  $('coinsDetail').textContent = (w.paid>0
     ? `${w.free} gratis de hoy · ${w.paid} compradas. Cada canción con IA cuesta una moneda.`
-    : `${w.free} de ${w.freeMax} gratis de hoy. Se recargan cada día. Cada canción con IA cuesta una moneda.`;
+    : `${w.free} de ${w.freeMax} gratis de hoy. Se recargan cada día. Cada canción con IA cuesta una moneda.`) + promo;
 }
 async function refreshCoins(){
   if(!WORKER_URL) return;
@@ -397,7 +423,7 @@ async function makeAISong(text){
     }
     const blob=await r.blob();
     const c=new (window.AudioContext||window.webkitAudioContext)(); const buffer=await c.decodeAudioData(await blob.arrayBuffer()); c.close();
-    const tot=r.headers.get('X-Coins'); if(tot!==null) showWallet({total:+tot, free:+(r.headers.get('X-Free')||0), paid:+(r.headers.get('X-Paid')||0), freeMax:WALLET.freeMax});
+    const tot=r.headers.get('X-Coins'); if(tot!==null) showWallet({total:+tot, free:+(r.headers.get('X-Free')||0), paid:+(r.headers.get('X-Paid')||0), freeMax:WALLET.freeMax, promo:WALLET.promo});
     const bt=analyzeBeats(buffer, style.bpm), lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
     const intro=Math.min(3,buffer.duration*0.1), per=(buffer.duration-intro)/lines.length;
     return {mode:'ai', blob, buffer, bpm:bt.bpm, beat:bt.beat, offset:bt.offset, bars:bt.bars, barEnergy:bt.barEnergy, duration:buffer.duration, events:[], lines:lines.map((t,i)=>({text:t,start:intro+i*per,end:intro+(i+1)*per}))};
@@ -812,6 +838,7 @@ $('btnMakeAI').onclick=async()=>{
   stop(); const s=await makeAISong(text); if(s){ useSong(s, text); storeCurrent(text); }
 };
 $('btnMoreCoins').onclick=openShop;
+$('promoBtn').onclick=redeemPromo;
 $('shopClose').onclick=()=>{ $('shopModal').hidden=true; };
 refreshCoins(); renderLibrary(); tsReady();
 $('btnRandom').onclick=()=>{ if(!song)return; autoChoreo(Math.floor(Math.random()*1e9)); };

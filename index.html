@@ -50,6 +50,23 @@
   .song .acts button{flex:1; border:0; border-radius:14px; padding:12px 6px; font-size:16px; font-weight:800; background:#41208f; color:#fff;}
   .song .acts button.go{background:var(--accent2); color:#1a0b3d;}
   .song .acts button.del{flex:0 0 58px; background:#5b2350;}
+  .modal{position:fixed; inset:0; background:rgba(7,3,15,.86); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px;}
+  .sheet{background:var(--card); border-radius:24px; padding:22px; width:100%; max-width:440px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.5);}
+  .sheet h3{margin:0 0 6px; font-size:22px; color:var(--accent2);}
+  .sheet p{margin:6px 0 14px; opacity:.85; font-size:15px;}
+  .gq{font-size:24px; font-weight:800; margin:8px 0 12px;}
+  .gans{font-size:34px; font-weight:800; letter-spacing:8px; min-height:44px; background:#1a0b3d; border-radius:14px; padding:6px; margin-bottom:12px;}
+  .pad{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .pad button{border:0; border-radius:14px; padding:14px 0; font-size:24px; font-weight:800; background:#41208f; color:#fff;}
+  .pad button.ok{background:var(--accent2); color:#1a0b3d;}
+  .gerr{color:#ff8fb8; min-height:20px; font-size:14px; margin-top:8px;}
+  .pack{display:flex; align-items:center; justify-content:space-between; background:#1a0b3d; border-radius:16px; padding:14px; margin-bottom:10px; text-align:left;}
+  .pack b{font-size:19px;} .pack small{display:block; opacity:.7;}
+  .pack button{border:0; border-radius:12px; padding:10px 14px; font-weight:800; font-size:16px; background:var(--accent2); color:#1a0b3d;}
+  .pack button:disabled{opacity:.45;}
+  .linkbtn{background:none; border:0; color:#fff; opacity:.7; font-size:15px; margin-top:8px; text-decoration:underline;}
+  #coinsCard .row2{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+  #btnMoreCoins{border:0; border-radius:14px; padding:10px 14px; font-weight:800; font-size:15px; background:var(--accent2); color:#1a0b3d;}
   #status{font-size:15px; color:var(--accent3); min-height:20px;}
 </style>
 </head>
@@ -80,8 +97,11 @@
       <div class="chips" id="voices"></div>
     </div>
     <div class="card" id="coinsCard" style="display:none">
-      <h2>🪙 Monedas de hoy: <span id="coins">…</span></h2>
-      <p class="hint">Cada canción con IA de verdad cuesta una moneda. Se recargan cada día.</p>
+      <div class="row2">
+        <h2 style="margin:0">🪙 Tienes <span id="coins">…</span> monedas</h2>
+        <button id="btnMoreCoins">➕ Conseguir más</button>
+      </div>
+      <p class="hint" id="coinsDetail">Cada canción con IA de verdad cuesta una moneda.</p>
     </div>
     <div id="tsbox" style="display:flex;justify-content:center"></div>
     <button class="big pink" id="btnMakeAI" style="display:none">🤖 ¡Crear con IA (canta de verdad)!</button>
@@ -133,6 +153,26 @@
   </main>
 </div>
 
+<div class="modal" id="gateModal" hidden>
+  <div class="sheet">
+    <h3>🔒 Solo para adultos</h3>
+    <p id="gatePurpose">Pídele a un adulto que resuelva esto.</p>
+    <div class="gq" id="gateQ"></div>
+    <div class="gans" id="gateA"></div>
+    <div class="pad" id="gatePad"></div>
+    <div class="gerr" id="gateErr"></div>
+    <button class="linkbtn" id="gateCancel">Cancelar</button>
+  </div>
+</div>
+<div class="modal" id="shopModal" hidden>
+  <div class="sheet">
+    <h3>🪙 Tienda de monedas</h3>
+    <p>Cada moneda es una canción cantada por la IA. Las monedas compradas no caducan.</p>
+    <div id="shopPacks"></div>
+    <p class="hint" id="shopNote">Las compras llegan muy pronto. Se pagarán con la cuenta de la tienda de tu teléfono.</p>
+    <button class="linkbtn" id="shopClose">Cerrar</button>
+  </div>
+</div>
 <script src="lame.min.js"></script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 
@@ -285,26 +325,78 @@ async function tsToken(){
     try{ turnstile.execute(tsWidget,{callback:t=>{clearTimeout(to);res(t);},'error-callback':()=>{clearTimeout(to);res(null);}}); }catch(e){ clearTimeout(to); res(null); } });
 }
 const DEVICE_ID = (()=>{ try{ let d=localStorage.getItem('milaDevice'); if(!d){ d=Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('milaDevice',d);} return d; }catch{ return 'anon'; } })();
+/* ===================== PUERTA PARENTAL =====================
+ * Protege la tienda y todo lo que sale de la app (compartir a WhatsApp, redes, archivos).
+ * Multiplicación escrita con palabras: un niño de 6-8 años no la resuelve, un adulto sí.
+ * Tras pasarla queda abierta 2 minutos; 3 fallos la bloquean 60 segundos.
+ */
+const WORDS=['cero','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve'];
+let gateOpenUntil=0, gateLockedUntil=0;
+function parentGate(purpose){
+  if(Date.now()<gateOpenUntil) return Promise.resolve(true);
+  return new Promise(res=>{
+    const m=$('gateModal'), a=$('gateA'), err=$('gateErr'); let fails=0, typed='', ans=0;
+    const newQ=()=>{ const x=3+Math.floor(Math.random()*7), y=3+Math.floor(Math.random()*7); ans=x*y; typed=''; a.textContent='';
+      $('gateQ').textContent=`¿Cuánto es ${WORDS[x]} por ${WORDS[y]}?`; };
+    const close=(ok)=>{ m.hidden=true; if(ok) gateOpenUntil=Date.now()+120000; res(ok); };
+    $('gatePurpose').textContent=purpose||'Pídele a un adulto que resuelva esto.';
+    err.textContent=''; newQ();
+    const pad=$('gatePad'); pad.innerHTML='';
+    ['1','2','3','4','5','6','7','8','9','⌫','0','OK'].forEach(k=>{ const b=document.createElement('button'); b.textContent=k; if(k==='OK') b.className='ok';
+      b.onclick=()=>{
+        if(Date.now()<gateLockedUntil){ err.textContent='Espera un momento e inténtalo de nuevo.'; return; }
+        if(k==='⌫'){ typed=typed.slice(0,-1); }
+        else if(k==='OK'){
+          if(parseInt(typed,10)===ans) return close(true);
+          fails++; err.textContent='Respuesta incorrecta.';
+          if(fails>=3){ gateLockedUntil=Date.now()+60000; err.textContent='Demasiados intentos. Espera un minuto.'; fails=0; }
+          newQ(); return;
+        } else if(typed.length<3){ typed+=k; }
+        a.textContent=typed; };
+      pad.appendChild(b); });
+    $('gateCancel').onclick=()=>close(false);
+    m.hidden=false;
+  });
+}
+
+/* ===================== TIENDA ===================== */
+const PACKS=[{id:'coins_20',coins:20,price:'2.99 USD',tag:'Para empezar'},{id:'coins_80',coins:80,price:'9.99 USD',tag:'El favorito de las familias'}];
+async function openShop(){
+  if(!(await parentGate('Para entrar a la tienda, un adulto debe resolver esto.'))) return;
+  const box=$('shopPacks'); box.innerHTML='';
+  for(const p of PACKS){ const d=document.createElement('div'); d.className='pack';
+    d.innerHTML=`<div><b>🪙 ${p.coins} canciones</b><small>${p.tag}</small></div><button disabled>${p.price}</button>`;
+    box.appendChild(d); }
+  $('shopModal').hidden=false;
+}
+
+let WALLET={free:0,freeMax:0,paid:0,total:0};
+function showWallet(w){
+  WALLET=w; $('coins').textContent=w.total;
+  $('coinsDetail').textContent = w.paid>0
+    ? `${w.free} gratis de hoy · ${w.paid} compradas. Cada canción con IA cuesta una moneda.`
+    : `${w.free} de ${w.freeMax} gratis de hoy. Se recargan cada día. Cada canción con IA cuesta una moneda.`;
+}
 async function refreshCoins(){
   if(!WORKER_URL) return;
   document.getElementById('coinsCard').style.display='block'; document.getElementById('btnMakeAI').style.display='block';
-  try{ const r=await fetch(`${WORKER_URL}/coins?device=${DEVICE_ID}`); const j=await r.json(); document.getElementById('coins').textContent=`${j.coins} / ${j.dailyLimit}`; }
-  catch{ document.getElementById('coins').textContent='sin conexión'; }
+  try{ const r=await fetch(`${WORKER_URL}/wallet?uid=${encodeURIComponent(DEVICE_ID)}`); showWallet(await r.json()); }
+  catch{ $('coins').textContent='?'; $('coinsDetail').textContent='Sin conexión. Puedes usar "Crear rápido".'; }
 }
-async function makeAISong(text, pin){
+async function makeAISong(text){
   const btn=document.getElementById('btnMakeAI'); btn.disabled=true; btn.textContent='🎶 Creando tu canción... (1 minuto)';
   try{
     const ts=await tsToken();
     if(!ts){ alert('No pudimos verificar la app 🔒\nRevisa tu internet y vuelve a intentar.\nMientras tanto puedes usar "Crear rápido (sin conexión)".'); return null; }
-    const r=await fetch(`${WORKER_URL}/song`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID,lyrics:text,style:style.id,voice:voice.id,bpm:style.bpm,seconds:30,ts,pin})});
+    const r=await fetch(`${WORKER_URL}/song`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID,lyrics:text,style:style.id,voice:voice.id,bpm:style.bpm,seconds:30,ts})});
     if(!r.ok){
       const j=await r.json().catch(()=>({error:'Error '+r.status}));
-      if(j.needPin){ const p=prompt('🔐 PIN de un adulto para otra canción:'); if(p) return makeAISong(text,p); }
+      if(j.needCoins){ if(j.total!==undefined) showWallet(j); if(confirm((j.error||'Se acabaron tus monedas 🪙')+'\n\n¿Abrir la tienda? Necesitarás a un adulto.')) openShop(); return null; }
       alert(j.error||'No se pudo crear'); return null;
     }
     const blob=await r.blob();
     const c=new (window.AudioContext||window.webkitAudioContext)(); const buffer=await c.decodeAudioData(await blob.arrayBuffer()); c.close();
-    const coins=r.headers.get('X-Coins'); if(coins!==null) document.getElementById('coins').textContent=`${coins} / ${(document.getElementById('coins').textContent.split('/')[1]||'').trim()}`;
+    const tot=r.headers.get('X-Coins'); if(tot!==null) showWallet({total:+tot, free:+(r.headers.get('X-Free')||0), paid:+(r.headers.get('X-Paid')||0), freeMax:WALLET.freeMax});
     const bt=analyzeBeats(buffer, style.bpm), lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
     const intro=Math.min(3,buffer.duration*0.1), per=(buffer.duration-intro)/lines.length;
     return {mode:'ai', blob, buffer, bpm:bt.bpm, beat:bt.beat, offset:bt.offset, bars:bt.bars, barEnergy:bt.barEnergy, duration:buffer.duration, events:[], lines:lines.map((t,i)=>({text:t,start:intro+i*per,end:intro+(i+1)*per}))};
@@ -657,7 +749,7 @@ async function renderLibrary(){
     el.innerHTML=`<h3>🎵 ${r.title}</h3><div class="meta">${r.styleName} · ${r.voiceName} · ${d.toLocaleDateString('es-MX')} ${d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}</div>
       <div class="acts"><button class="go">▶️ Abrir</button><button class="dl">🎧 MP3</button><button class="del">🗑</button></div>`;
     el.querySelector('.go').onclick=()=>openSong(r);
-    el.querySelector('.dl').onclick=()=>shareOrDownload(new File([r.blob],(r.title||'cancion')+'.mp3',{type:'audio/mpeg'}));
+    el.querySelector('.dl').onclick=async()=>{ if(!(await parentGate('Para compartir fuera de la app, un adulto debe resolver esto.'))) return; shareOrDownload(new File([r.blob],(r.title||'cancion')+'.mp3',{type:'audio/mpeg'})); };
     el.querySelector('.del').onclick=async()=>{ if(confirm('¿Borrar "'+r.title+'"?')){ await delSong(r.id); renderLibrary(); } };
     box.appendChild(el);
   }
@@ -718,12 +810,14 @@ $('btnMakeAI').onclick=async()=>{
   if(!text){ alert('¡Escribe tu letra primero! ✍️'); return; }
   stop(); const s=await makeAISong(text); if(s){ useSong(s, text); storeCurrent(text); }
 };
+$('btnMoreCoins').onclick=openShop;
+$('shopClose').onclick=()=>{ $('shopModal').hidden=true; };
 refreshCoins(); renderLibrary(); tsReady();
 $('btnRandom').onclick=()=>{ if(!song)return; autoChoreo(Math.floor(Math.random()*1e9)); };
 $('btnPlay0').onclick=$('btnPlay1').onclick=()=>{ play(); setStatusUI(); };
 $('btnStop0').onclick=$('btnStop1').onclick=()=>stop();
-$('btnVideo').onclick=()=>exportVideo().catch(e=>setStatus('😢 No se pudo grabar: '+e.message));
-$('btnAudio').onclick=()=>exportAudio().catch(e=>setStatus('😢 No se pudo guardar: '+e.message));
+$('btnVideo').onclick=async()=>{ if(!(await parentGate('Para compartir fuera de la app, un adulto debe resolver esto.'))) return; exportVideo().catch(e=>setStatus('😢 No se pudo grabar: '+e.message)); };
+$('btnAudio').onclick=async()=>{ if(!(await parentGate('Para compartir fuera de la app, un adulto debe resolver esto.'))) return; exportAudio().catch(e=>setStatus('😢 No se pudo guardar: '+e.message)); };
 const origPlay=play; play=function(onEnd){ origPlay(onEnd); setStatusUI(); };
 draw(stage,-1); draw(stage2,-1); setStatusUI();
 </script>

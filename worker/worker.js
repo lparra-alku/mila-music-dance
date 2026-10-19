@@ -19,8 +19,8 @@ const ALLOWED_ORIGINS = [
 const baseCors = (origin) => ({
   'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Expose-Headers': 'X-Coins, X-Month-Left',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+  'Access-Control-Expose-Headers': 'X-Coins, X-Free, X-Paid, X-Month-Left',
   'Vary': 'Origin',
 });
 let CORS = baseCors('');
@@ -63,6 +63,30 @@ const today = () => new Date().toISOString().slice(0, 10);
 const month = () => new Date().toISOString().slice(0, 7);
 
 async function counter(env, key) { return parseInt((await env.COINS.get(key)) || '0', 10); }
+/* ===================== MONEDERO =====================
+ * Dos bolsillos por usuario:
+ *  - gratis: FREE_DAILY monedas al día (contador dev:<uid>:<día>), se gastan primero
+ *  - compradas: saldo permanente en wallet:<uid>, solo lo suben compras confirmadas
+ * El uid hoy es el identificador del dispositivo; después será la cuenta del papá.
+ */
+const WALLET_LOG = 30;
+async function getWallet(env, uid) {
+  const w = JSON.parse((await env.COINS.get(`wallet:${uid}`)) || 'null');
+  return w || { paid: 0, created: new Date().toISOString(), log: [] };
+}
+async function saveWallet(env, uid, w) {
+  w.updated = new Date().toISOString();
+  w.log = (w.log || []).slice(-WALLET_LOG);
+  await env.COINS.put(`wallet:${uid}`, JSON.stringify(w));
+}
+async function walletView(env, uid, FREE) {
+  const usedFree = await counter(env, `dev:${uid}:${today()}`);
+  const w = await getWallet(env, uid);
+  const free = Math.max(0, FREE - usedFree);
+  return { free, freeMax: FREE, paid: w.paid, total: free + w.paid };
+}
+const cleanUid = (v) => String(v || 'anon').replace(/[^A-Za-z0-9_\-:.]/g, '').slice(0, 64) || 'anon';
+
 async function bump(env, key, by, ttl) { await env.COINS.put(key, String((await counter(env, key)) + by), { expirationTtl: ttl }); }
 
 function json(obj, status = 200, extra = {}) {
@@ -116,15 +140,38 @@ export default {
     CORS = baseCors(origin);
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(req.url);
-    const DAILY = parseInt(env.DAILY_PER_DEVICE || '2', 10);
     const MONTH_CREDITS = parseInt(env.MONTHLY_CREDITS || '9000', 10);
     const CREDITS_PER_SEC = 12.5; // ElevenLabs cobra ~375 créditos por canción de 30 s
 
+    const FREE = parseInt(env.FREE_DAILY || env.DAILY_PER_DEVICE || '5', 10);
+
+    // Saldo del monedero
+    if (url.pathname === '/wallet' && req.method === 'GET') {
+      return json(await walletView(env, cleanUid(url.searchParams.get('uid')), FREE));
+    }
+
+    // Abonar monedas compradas. Solo con la llave de administrador (después: aviso de RevenueCat).
+    // 'ref' identifica la compra: si llega dos veces, se abona una sola vez.
+    if (url.pathname === '/wallet/grant' && req.method === 'POST') {
+      if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);
+      const b = await req.json().catch(() => ({}));
+      const uid = cleanUid(b.uid), coins = parseInt(b.coins, 10), ref = String(b.ref || '').slice(0, 120);
+      if (!uid || uid === 'anon' || !Number.isFinite(coins) || coins === 0 || Math.abs(coins) > 1000) return json({ error: 'Datos inválidos' }, 400);
+      if (!ref) return json({ error: 'Falta ref (identificador de la compra)' }, 400);
+      if (await env.COINS.get(`grant:${ref}`)) return json({ ok: true, duplicado: true, ...(await walletView(env, uid, FREE)) });
+      const w = await getWallet(env, uid);
+      w.paid = Math.max(0, w.paid + coins);
+      w.log.push({ t: new Date().toISOString(), delta: coins, why: String(b.reason || 'abono').slice(0, 60), ref });
+      await saveWallet(env, uid, w);
+      await env.COINS.put(`grant:${ref}`, uid);
+      return json({ ok: true, ...(await walletView(env, uid, FREE)) });
+    }
+
     if (url.pathname === '/coins') {
       const device = url.searchParams.get('device') || 'anon';
-      const used = await counter(env, `dev:${device}:${today()}`);
-      const usedMonth = await counter(env, `global:${month()}`);
-      return json({ coins: Math.max(0, DAILY - used), dailyLimit: DAILY, monthLeft: Math.max(0, MONTH_CREDITS - usedMonth) });
+      // compatibilidad con versiones anteriores de la app
+      const v = await walletView(env, cleanUid(device), FREE);
+      return json({ coins: v.total, dailyLimit: FREE, free: v.free, paid: v.paid });
     }
 
     if (url.pathname === '/status') {
@@ -153,7 +200,20 @@ export default {
         if (!v || !v.success) return json({ error: 'No pudimos verificar la app. Recarga la página.' }, 403);
       }
 
-      // 3) Tope global diario: por mucho que pase, el gasto del día está acotado
+      // 3) ¿De qué bolsillo se paga esta canción? Gratis primero, luego compradas.
+      const b0 = await req.clone().json().catch(() => ({}));
+      const uid = cleanUid(b0.device);
+      const wv = await walletView(env, uid, FREE);
+      if (wv.total <= 0) return json({ error: 'Se acabaron tus monedas 🪙 Pídele a un adulto que consiga más.', needCoins: true, ...wv }, 402);
+      const payWithFree = wv.free > 0;
+
+      // Candado: evita que dos toques seguidos gasten de más mientras se genera
+      if (await env.COINS.get(`lock:${uid}`)) return json({ error: 'Ya se está creando una canción, espera un momento 🎶' }, 409);
+      await env.COINS.put(`lock:${uid}`, '1', { expirationTtl: 60 });
+      try {
+
+      // 4) Los topes anti-abuso aplican solo a monedas gratis: las compradas ya están pagadas
+      if (payWithFree) {
       const GLOBAL_DAY = parseInt(env.DAILY_GLOBAL_SONGS || '40', 10);
       const gKey = `globalday:${today()}`;
       if ((await counter(env, gKey)) >= GLOBAL_DAY) return json({ error: 'Hoy ya se hicieron muchas canciones 😅 Vuelve mañana.' }, 429);
@@ -163,6 +223,7 @@ export default {
       const ipH = `ip:${ip}:${new Date().toISOString().slice(0, 13)}`, ipD = `ip:${ip}:${today()}`;
       const IP_HOUR = parseInt(env.IP_HOUR || '6', 10), IP_DAY = parseInt(env.IP_DAY || '12', 10);
       if ((await counter(env, ipH)) >= IP_HOUR || (await counter(env, ipD)) >= IP_DAY) return json({ error: 'Demasiadas canciones seguidas desde esta conexión. Descansa un rato 🎈' }, 429);
+      }
 
       let body; try { body = await req.json(); } catch { return json({ error: 'JSON inválido' }, 400); }
       const device = String(body.device || 'anon').slice(0, 64);
@@ -178,17 +239,14 @@ export default {
       if (banned.test(lyrics)) return json({ error: 'Esa palabra no va en la canción 🙈' }, 422);
 
       const cost = seconds * CREDITS_PER_SEC;
-      const devKey = `dev:${device}:${today()}`, monthKey = `global:${month()}`;
-      const usedToday = await counter(env, devKey);
+      const monthKey = `global:${month()}`;
       const usedMonth = await counter(env, monthKey);
-      const parentOk = env.PARENT_PIN && body.pin === env.PARENT_PIN;
 
       // Saldo REAL de ElevenLabs (deja una reserva de seguridad)
       const RESERVE = parseInt(env.RESERVE_CREDITS || '1000', 10);
       const sub = await fetch('https://api.elevenlabs.io/v1/user/subscription', { headers: { 'xi-api-key': env.ELEVENLABS_API_KEY } }).then(r => r.json()).catch(() => null);
       if (sub && sub.character_limit && sub.character_limit - sub.character_count - RESERVE < cost) return json({ error: 'Se acabaron las canciones de este mes 😴 Se renuevan el ' + (sub.next_character_count_reset_unix ? new Date(sub.next_character_count_reset_unix * 1000).toLocaleDateString('es-MX') : 'próximo ciclo') }, 429);
       if (!sub && usedMonth + cost > MONTH_CREDITS) return json({ error: 'Se acabaron las canciones de este mes 😴' }, 429);
-      if (!parentOk && usedToday >= DAILY) return json({ error: 'Ya usaste tus monedas de hoy. Pide el PIN a un adulto 🔐', needPin: true }, 429);
 
       const plan = buildPlan(lyrics, style, bpm, seconds, voice);
       const call = () => fetch('https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128', {
@@ -203,15 +261,26 @@ export default {
         await env.COINS.put('lasterror', JSON.stringify({ when: new Date().toISOString(), status: r.status, detail: txt.slice(0, 800), lines: plan.chunks.map(c => c.text) }));
         return json({ error: 'La IA no pudo con esa letra 😅 Prueba con versos más cortos, uno por línea.', detail: txt.slice(0, 500) }, 502);
       }
-      // Cobra solo si salió bien
-      if (!parentOk) await bump(env, devKey, 1, 60 * 60 * 48);
+      // Cobra solo si salió bien, del bolsillo que corresponde
+      if (payWithFree) {
+        await bump(env, `dev:${uid}:${today()}`, 1, 60 * 60 * 48);
+        await bump(env, `globalday:${today()}`, 1, 60 * 60 * 48);
+        await bump(env, `ip:${req.headers.get('CF-Connecting-IP') || 'sin-ip'}:${new Date().toISOString().slice(0, 13)}`, 1, 60 * 60 * 3);
+        await bump(env, `ip:${req.headers.get('CF-Connecting-IP') || 'sin-ip'}:${today()}`, 1, 60 * 60 * 48);
+      } else {
+        const w = await getWallet(env, uid);
+        w.paid = Math.max(0, w.paid - 1);
+        w.log.push({ t: new Date().toISOString(), delta: -1, why: 'cancion' });
+        await saveWallet(env, uid, w);
+      }
       await bump(env, monthKey, cost, 60 * 60 * 24 * 40);
-      await bump(env, `globalday:${today()}`, 1, 60 * 60 * 48);
-      await bump(env, `ip:${req.headers.get('CF-Connecting-IP') || 'sin-ip'}:${new Date().toISOString().slice(0, 13)}`, 1, 60 * 60 * 3);
-      await bump(env, `ip:${req.headers.get('CF-Connecting-IP') || 'sin-ip'}:${today()}`, 1, 60 * 60 * 48);
-      const coins = Math.max(0, DAILY - (parentOk ? usedToday : usedToday + 1));
-      return new Response(r.body, { headers: { 'Content-Type': 'audio/mpeg', ...CORS, 'X-Coins': String(coins), 'X-Month-Left': String(MONTH_CREDITS - usedMonth - cost) } });
+      const after = await walletView(env, uid, FREE);
+      return new Response(r.body, { headers: { 'Content-Type': 'audio/mpeg', ...CORS, 'X-Coins': String(after.total), 'X-Free': String(after.free), 'X-Paid': String(after.paid), 'X-Month-Left': String(MONTH_CREDITS - usedMonth - cost) } });
+
+      } finally {
+        await env.COINS.delete(`lock:${uid}`);
+      }
     }
-    return json({ ok: true, app: 'Mila Music Dance' });
+    return json({ ok: true, app: 'Music Dance' });
   },
 };

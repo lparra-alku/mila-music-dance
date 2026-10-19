@@ -3,7 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-09-01"
 
 [vars]
-DAILY_PER_DEVICE = "5"      # canciones con IA por iPad por día
+FREE_DAILY = "5"          # monedas gratis por dispositivo al dia (poner "0" al lanzar la venta)
 MONTHLY_CREDITS = "38000"   # respaldo si no se puede leer el saldo real de ElevenLabs
 RESERVE_CREDITS = "1000"    # reserva que nunca se gasta
 DAILY_GLOBAL_SONGS = "40"   # tope de canciones al dia entre TODOS los usuarios

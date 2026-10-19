@@ -10,6 +10,18 @@ Intermediario gratuito en Cloudflare que guarda la llave de ElevenLabs y limita 
 
 Si algo falla y hay que desactivar la verificación de emergencia: pon `REQUIRE_TURNSTILE = "0"` en `wrangler.toml` y vuelve a publicar.
 
+## Monedero
+Cada usuario tiene dos bolsillos. Las **gratis del día** (`FREE_DAILY`, hoy 5) se gastan primero. Las **compradas** son permanentes y solo suben con una compra confirmada.
+- `GET /wallet?uid=...` devuelve `{free, freeMax, paid, total}`.
+- `POST /wallet/grant` abona monedas compradas. Exige la cabecera `X-Admin-Key` y un `ref` único por compra: si la misma compra llega dos veces, se abona una sola vez. La llave vive en `~/.config/musicdance/admin_key`, nunca en el repositorio.
+- Los topes globales y por IP aplican solo a las monedas gratis. Las compradas ya están pagadas.
+- Un candado de 60 segundos por usuario evita que dos toques seguidos gasten de más.
+
+Para abonar monedas a mano, por ejemplo a un usuario de prueba:
+```bash
+curl -s -X POST https://mila-music.mp-music.workers.dev/wallet/grant -H 'Content-Type: application/json' -H "X-Admin-Key: $(cat ~/.config/musicdance/admin_key)" -d '{"uid":"ID_DEL_USUARIO","coins":20,"ref":"manual-001","reason":"regalo"}'
+```
+
 ## Reglas que aplica
 - 5 canciones con IA por iPad por día (`DAILY_PER_DEVICE`) (`DAILY_PER_DEVICE` en wrangler.toml).
 - El Worker consulta el saldo REAL de ElevenLabs antes de cada canción y deja una reserva de 1,000 créditos (`RESERVE_CREDITS`). El contador propio (`MONTHLY_CREDITS`) solo se usa de respaldo.

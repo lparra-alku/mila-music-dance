@@ -22,6 +22,15 @@ Para abonar monedas a mano, por ejemplo a un usuario de prueba:
 curl -s -X POST https://mila-music.mp-music.workers.dev/wallet/grant -H 'Content-Type: application/json' -H "X-Admin-Key: $(cat ~/.config/musicdance/admin_key)" -d '{"uid":"ID_DEL_USUARIO","coins":20,"ref":"manual-001","reason":"regalo"}'
 ```
 
+## Cuenta familiar
+El saldo comprado y los códigos de promoción viven en una cuenta, no en el dispositivo, para no perderlos al reinstalar o cambiar de teléfono.
+- **Acceso con código familiar** (`FAM-XXXX-XXXX-XXXX-XXXX`, 80 bits). El servidor solo guarda su huella SHA-256: ni el administrador puede ver el código.
+- `POST /account/create` crea la cuenta, devuelve el código (se muestra una sola vez) y una sesión, y pasa a la cuenta las monedas compradas y la promo del dispositivo.
+- `POST /account/link` enlaza otro dispositivo con el código. Máximo 10 intentos por hora por conexión.
+- `POST /account/rotate` crea un código nuevo e invalida el anterior. `logout` sale en ese dispositivo. `delete` borra cuenta, sesiones y saldo (requisito de Apple).
+- Con sesión válida, el usuario efectivo es `acct_<id>`: ahí se cobran canciones, se canjean promos y se abonarán las compras. Las monedas gratis del día también se cuentan por cuenta, para que enlazar varios dispositivos no las multiplique.
+- Para abonar a una cuenta con `/wallet/grant`, usa `uid` = `acct_<id>`.
+
 ## Reglas que aplica
 - 5 canciones con IA por iPad por día (`DAILY_PER_DEVICE`) (`DAILY_PER_DEVICE` en wrangler.toml).
 - El Worker consulta el saldo REAL de ElevenLabs antes de cada canción y deja una reserva de 1,000 créditos (`RESERVE_CREDITS`). El contador propio (`MONTHLY_CREDITS`) solo se usa de respaldo.

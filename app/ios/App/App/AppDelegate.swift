@@ -47,3 +47,28 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
 }
+
+// iOS 27 exige el ciclo de vida por escenas (UIScene). La escena carga el mismo
+// storyboard "Main" con el CAPBridgeViewController y reenvía a Capacitor los
+// enlaces que abren la app.
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        if let ctx = connectionOptions.urlContexts.first {
+            _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: ctx.url, options: [:])
+        }
+        if let activity = connectionOptions.userActivities.first {
+            _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })
+        }
+    }
+
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        guard let ctx = URLContexts.first else { return }
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: ctx.url, options: [:])
+    }
+
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: userActivity, restorationHandler: { _ in })
+    }
+}

@@ -7,3 +7,4 @@ primera-cancion.mp3
 app/node_modules/
 app/www/
 app/android/.idea/
+app/ios/App/build/

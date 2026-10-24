@@ -446,7 +446,7 @@ export default {
       if (r.status >= 500) r = await call(); // reintenta una vez si ElevenLabs tuvo un error pasajero
       if (!r.ok) {
         const txt = await r.text();
-        await env.COINS.put('lasterror', JSON.stringify({ when: new Date().toISOString(), status: r.status, detail: txt.slice(0, 800), lines: plan.chunks.map(c => c.text) }));
+        await env.COINS.put('lasterror', JSON.stringify({ when: new Date().toISOString(), status: r.status, detail: txt.slice(0, 800), lines: plan.chunks.map(c => c.text) }), { expirationTtl: 60 * 60 * 24 * 7 }); // la letra de un niño no se guarda más de 7 días
         return json({ error: 'La IA no pudo con esa letra 😅 Prueba con versos más cortos, uno por línea.', detail: txt.slice(0, 500) }, 502);
       }
       // Cobra solo si salió bien, del bolsillo que corresponde

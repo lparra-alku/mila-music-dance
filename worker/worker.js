@@ -230,11 +230,10 @@ async function processPaidOrder(env, orderId) {
   const body = `<p>¡Gracias por tu compra! 🎶</p>
 <p>Tu código para <b>${coins} canciones</b> en Music Dance es:</p>
 <p style="font-size:22px;font-weight:bold;letter-spacing:2px">${code}</p>
-<p><a href="${link}">Toca aquí para abrir Music Dance y canjearlo</a>.</p>
-<p>Si ya tienes la app instalada: ábrela, toca <b>Conseguir más</b>, pide a un adulto resolver la pregunta, crea tu <b>cuenta familiar</b> si aún no la tienes y escribe el código en <b>¿Tienes un código de promoción?</b></p>
-<p>El código sirve una sola vez. Las canciones no caducan.</p>`;
+<p><a href="${link}" style="display:inline-block;background:#ffd43b;color:#1a0b3d;font-weight:bold;padding:10px 18px;border-radius:12px;text-decoration:none">Abrir Music Dance y canjear</a></p>
+<p>El botón abre la app con el código ya escrito. Entra con tu correo o crea tu cuenta (es gratis) y toca <b>Canjear</b>. El código sirve una sola vez y las canciones no caducan.</p>`;
   await odoo(env, 'sale.order', 'write', [[orderId], { x_md_codigo: code }]); // lo muestra la página de confirmación del pago
-  await odoo(env, 'sale.order', 'message_post', [[orderId]], { body, partner_ids: [o.partner_id[0]], message_type: 'comment', subtype_xmlid: 'mail.mt_comment' });
+  await odoo(env, 'sale.order', 'message_post', [[orderId]], { body, body_is_html: true, partner_ids: [o.partner_id[0]], message_type: 'comment', subtype_xmlid: 'mail.mt_comment' });
   return { ok: true, code, coins, order: o.name };
 }
 
@@ -291,7 +290,7 @@ async function recordInOdoo(env, ses, rec) {
   await env.COINS.put(`order:${orderId}`, rec.code);   // la automatización de Odoo ve que ya se procesó
   await odoo(env, 'sale.order', 'action_confirm', [[orderId]]);
   const link = `${APP_URL}?codigo=${rec.code}`;
-  await odoo(env, 'sale.order', 'message_post', [[orderId]], { partner_ids: [partnerId], message_type: 'comment', subtype_xmlid: 'mail.mt_comment',
+  await odoo(env, 'sale.order', 'message_post', [[orderId]], { partner_ids: [partnerId], message_type: 'comment', subtype_xmlid: 'mail.mt_comment', body_is_html: true,
     body: `<p>¡Gracias por tu compra! 🎶 Pagaste ${rec.coins} canciones para Music Dance.</p><p>Si al pagar ya entraste a tu cuenta en la app, las canciones ya están ahí. Si no, este es tu código de respaldo:</p><p style="font-size:22px;font-weight:bold;letter-spacing:2px">${rec.code}</p><p><a href="${link}">Toca aquí para abrir Music Dance y canjearlo</a>.</p>` });
   return orderId;
 }

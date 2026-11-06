@@ -289,11 +289,30 @@ async function recordInOdoo(env, ses, rec) {
     order_line: [[0, 0, { product_id: pack.productId, product_uom_qty: 1, price_unit: rec.amount, tax_ids: [[6, 0, []]] }]] }]);
   await env.COINS.put(`order:${orderId}`, rec.code);   // la automatización de Odoo ve que ya se procesó
   await odoo(env, 'sale.order', 'action_confirm', [[orderId]]);
+  await registerPaymentInOdoo(env, orderId, ses);
   const link = `${APP_URL}?codigo=${rec.code}`;
   await odoo(env, 'sale.order', 'message_post', [[orderId]], { partner_ids: [partnerId], message_type: 'comment', subtype_xmlid: 'mail.mt_comment', body_is_html: true,
     body: `<p>¡Gracias por tu compra! 🎶 Pagaste ${rec.coins} canciones para Music Dance.</p><p>Si al pagar ya entraste a tu cuenta en la app, las canciones ya están ahí. Si no, este es tu código de respaldo:</p><p style="font-size:22px;font-weight:bold;letter-spacing:2px">${rec.code}</p><p><a href="${link}">Toca aquí para abrir Music Dance y canjearlo</a>.</p>` });
   return orderId;
 }
+// Registra en Odoo el cobro de Stripe igual que lo hace su tienda: pago contable en el diario
+// del proveedor Stripe y transacción "hecha" ligada al pedido (así el pedido aparece pagado).
+async function registerPaymentInOdoo(env, orderId, ses) {
+  const [so] = await odoo(env, 'sale.order', 'read', [[orderId]], { fields: ['name', 'partner_id', 'amount_total', 'amount_paid', 'currency_id'] });
+  if (!so || so.amount_paid > 0) return { ya: true };
+  const [prov] = await odoo(env, 'payment.provider', 'search_read', [[['code', '=', 'stripe']]], { fields: ['id', 'journal_id'], limit: 1 });
+  const [line] = await odoo(env, 'account.payment.method.line', 'search_read', [[['journal_id', '=', prov.journal_id[0]], ['payment_provider_id', '=', prov.id]]], { fields: ['id'], limit: 1 });
+  const [card] = await odoo(env, 'payment.method', 'search_read', [[['code', '=', 'card']]], { fields: ['id'], limit: 1 });
+  const pi = typeof ses.payment_intent === 'string' ? ses.payment_intent : (ses.payment_intent && ses.payment_intent.id) || ses.id;
+  const amount = ses.amount_total / 100;
+  const paymentId = await odoo(env, 'account.payment', 'create', [{ payment_type: 'inbound', partner_type: 'customer', partner_id: so.partner_id[0],
+    amount, journal_id: prov.journal_id[0], ...(line ? { payment_method_line_id: line.id } : {}), memo: `${so.name} - ${pi}` }]);
+  await odoo(env, 'account.payment', 'action_post', [[paymentId]]);
+  await odoo(env, 'payment.transaction', 'create', [{ provider_id: prov.id, payment_method_id: card.id, reference: so.name, amount, currency_id: so.currency_id[0],
+    partner_id: so.partner_id[0], operation: 'online_direct', provider_reference: pi, sale_order_ids: [[6, 0, [orderId]]], state: 'done', payment_id: paymentId }]);
+  return { ok: true, paymentId };
+}
+
 async function verifyStripeSignature(secret, header, body) {
   const parts = Object.fromEntries(String(header || '').split(',').map(kv => kv.split('=')));
   if (!parts.t || !parts.v1) return false;
@@ -435,6 +454,18 @@ export default {
       if (['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(ev.type)) ctx.waitUntil(processStripeSession(env, ev.data.object.id).catch(() => {}));
       return json({ received: true });
     }
+    // Registra en Odoo el pago de una venta de Stripe ya hecha (administrador)
+    if (url.pathname === '/admin/stripe/pago-odoo' && req.method === 'POST') {
+      if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);
+      const b = await req.json().catch(() => ({}));
+      const rec = JSON.parse((await env.COINS.get(`stripe:${b.session}`)) || 'null');
+      if (!rec || !rec.order) return json({ error: 'Venta sin pedido en Odoo' }, 404);
+      const ses = await stripe(env, 'GET', `checkout/sessions/${encodeURIComponent(b.session)}`);
+      if (ses.payment_status !== 'paid') return json({ error: 'Stripe no la marca como pagada' }, 409);
+      try { return json({ order: rec.order, ...(await registerPaymentInOdoo(env, rec.order, ses)) }); }
+      catch (e) { return json({ ok: false, error: String(e.message || e) }, 500); }
+    }
+
     // Registra el aviso de Stripe hacia este Worker (una sola vez, administrador)
     if (url.pathname === '/admin/stripe/setup' && req.method === 'POST') {
       if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);

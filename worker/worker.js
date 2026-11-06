@@ -11,6 +11,7 @@
 // Solo la app publicada puede pedir canciones
 const ALLOWED_ORIGINS = [
   'https://lparra-alku.github.io',
+  'https://play.musicdance.app',
   'http://localhost:8765',
   'http://127.0.0.1:8765',
   'https://localhost',        // app nativa iOS y Android (Capacitor)
@@ -18,7 +19,7 @@ const ALLOWED_ORIGINS = [
 ];
 const baseCors = (origin) => ({
   'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
   'Access-Control-Expose-Headers': 'X-Coins, X-Free, X-Paid, X-Month-Left',
   'Vary': 'Origin',
@@ -179,7 +180,7 @@ function makeBagCode() {
   const c = [...r].map(b => CODE_ABC[b % CODE_ABC.length]).join('');
   return `BOLSA-${c.slice(0, 4)}-${c.slice(4, 8)}`;
 }
-const APP_URL = 'https://lparra-alku.github.io/mila-music-dance/';
+const APP_URL = 'https://play.musicdance.app/';
 async function processPaidOrder(env, orderId) {
   const done = await env.COINS.get(`order:${orderId}`);
   if (done) return { ok: true, yaProcesado: true, code: done };
@@ -318,6 +319,46 @@ export default {
       const b = await req.json().catch(() => ({}));
       try { return json(await processPaidOrder(env, parseInt(b.orderId, 10))); }
       catch (e) { return json({ ok: false, error: String(e) }, 500); }
+    }
+
+    // ---- Mudanza de la app web de la dirección vieja a play.musicdance.app ----
+    // Paquete temporal: datos del dispositivo (identificador, sesión) y canciones de la biblioteca.
+    // Caduca en 24 h y se borra al terminar. Solo lo pueden usar la app vieja y la nueva.
+    if (url.pathname.startsWith('/transfer/')) {
+      if (!ALLOWED_ORIGINS.includes(origin)) return json({ error: 'Esta app no está autorizada.' }, 403);
+      const parts = url.pathname.split('/').filter(Boolean); // transfer, token?, item?, i?
+      const TTL = { expirationTtl: 60 * 60 * 24 };
+      if (parts[1] === 'start' && req.method === 'POST') {
+        if (!(await ipLimit(env, req, 'transfer', 20))) return json({ error: 'Demasiadas mudanzas desde esta conexión.' }, 429);
+        const b = await req.json().catch(() => ({}));
+        const token = randomId(24);
+        const meta = { device: cleanUid(b.device), session: typeof b.session === 'string' ? b.session.slice(0, 128) : '', songs: Math.min(60, parseInt(b.songs || '0', 10) || 0), created: new Date().toISOString() };
+        await env.COINS.put(`transfer:${token}:meta`, JSON.stringify(meta), TTL);
+        return json({ ok: true, token });
+      }
+      const token = String(parts[1] || '').replace(/[^a-f0-9]/g, '');
+      if (token.length !== 48) return json({ error: 'Mudanza inválida' }, 400);
+      const meta = JSON.parse((await env.COINS.get(`transfer:${token}:meta`)) || 'null');
+      if (!meta) return json({ error: 'La mudanza ya no existe o caducó.' }, 404);
+      if (parts[2] === 'item') {
+        const i = parseInt(parts[3], 10);
+        if (!(i >= 0 && i < meta.songs)) return json({ error: 'Canción fuera de rango' }, 400);
+        const k = `transfer:${token}:song:${i}`;
+        if (req.method === 'PUT') {
+          const body = await req.text();
+          if (body.length > 20 * 1024 * 1024) return json({ error: 'Canción demasiado grande' }, 413);
+          await env.COINS.put(k, body, TTL);
+          return json({ ok: true });
+        }
+        const v = await env.COINS.get(k);
+        return v ? new Response(v, { headers: { 'Content-Type': 'application/json', ...CORS } }) : json({ error: 'No encontrada' }, 404);
+      }
+      if (req.method === 'DELETE') {
+        for (let i = 0; i < meta.songs; i++) await env.COINS.delete(`transfer:${token}:song:${i}`);
+        await env.COINS.delete(`transfer:${token}:meta`);
+        return json({ ok: true, borrada: true });
+      }
+      return json({ ok: true, ...meta });
     }
 
     // ---- Cuenta familiar ----

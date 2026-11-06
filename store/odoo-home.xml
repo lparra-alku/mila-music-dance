@@ -26,7 +26,7 @@
    <p class="lead mt-3">Music Dance convierte las palabras de tus hijos en una canción de verdad, cantada por inteligencia artificial, con su propia coreografía. Diseñada por Mila, una niña de 7 años.</p>
    <div class="d-flex flex-wrap gap-3 mt-4">
     <a class="md-btn md-btn-y" href="#bolsas">Comprar canciones</a>
-    <a class="md-btn md-btn-o" href="https://lparra-alku.github.io/mila-music-dance/" target="_blank">Probar gratis</a>
+    <a class="md-btn md-btn-o" href="https://play.musicdance.app/" target="_blank">Probar gratis</a>
    </div>
   </div>
   <div class="col-lg-5 text-center">
@@ -60,7 +60,7 @@
    </div>
   </t>
  </div>
- <p class="text-center md-muted mt-4">Pago seguro con Mercado Pago. Al pagar recibes por correo tu código para canjear las canciones en la app.</p>
+ <p class="text-center md-muted mt-4">Pago seguro con tarjeta a través de Stripe. Al pagar recibes por correo tu código para canjear las canciones en la app.</p>
 </div></section>
 
 <section class="py-5"><div class="container" style="max-width:820px">

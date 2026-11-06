@@ -203,6 +203,15 @@
     <button class="linkbtn" id="shopClose">Cerrar</button>
   </div>
 </div>
+<div class="modal" id="moveModal" hidden>
+  <div class="sheet">
+    <h3>🚚 ¡Nos mudamos!</h3>
+    <p>Music Dance ahora vive en <b>play.musicdance.app</b>. Estamos llevando tus canciones y tus monedas…</p>
+    <div class="gq" id="moveStatus">Preparando…</div>
+    <a class="big" id="moveGo" href="https://play.musicdance.app/" style="text-decoration:none" hidden>Ir a la nueva dirección</a>
+    <p class="hint">Si la tenías en la pantalla de inicio, vuelve a agregarla desde la nueva dirección.</p>
+  </div>
+</div>
 <script src="lame.min.js"></script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 
@@ -910,6 +919,45 @@ $('promoBtn').onclick=redeemPromo;
 $('famCreate').onclick=famCreate; $('famLink').onclick=famLink; $('famRotate').onclick=famRotate; $('famLogout').onclick=famLogout; $('famDelete').onclick=famDelete;
 $('famCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText($('famCode').textContent); $('famMsg').textContent='📋 Código copiado.'; }catch{ $('famMsg').textContent='Mantén presionado el código para copiarlo.'; } };
 $('shopClose').onclick=()=>{ $('shopModal').hidden=true; };
+/* ===================== MUDANZA A play.musicdance.app =====================
+ * La dirección vieja empaca identificador, sesión y biblioteca en el Worker (24 h) y redirige.
+ * La nueva desempaca, guarda y recarga. Necesario porque cada dirección tiene su propio almacenamiento.
+ */
+const OLD_HOST='lparra-alku.github.io', NEW_URL='https://play.musicdance.app/';
+async function moveOut(){
+  $('moveModal').hidden=false; const st=$('moveStatus');
+  const go=(t)=>location.replace(NEW_URL+location.search+(t?'#mudanza='+t:''));
+  try{
+    const songs=(await allSongs())||[];
+    const r=await fetch(`${WORKER_URL}/transfer/start`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID,session:SESSION,songs:songs.length})});
+    const j=await r.json(); if(!j.token) throw new Error(j.error||'sin token');
+    for(let i=0;i<songs.length;i++){
+      st.textContent=`Llevando canción ${i+1} de ${songs.length}…`;
+      const {blob,...meta}=songs[i];
+      await fetch(`${WORKER_URL}/transfer/${j.token}/item/${i}`,{method:'PUT',body:JSON.stringify({meta,b64:blob?await blobToB64(blob):null,type:blob&&blob.type})});
+    }
+    st.textContent='¡Listo! Abriendo la nueva dirección…'; setTimeout(()=>go(j.token),600);
+  }catch(e){ st.textContent='No pudimos llevar tus datos 😕 Toca el botón para continuar.'; $('moveGo').hidden=false; }
+}
+async function moveIn(token){
+  $('moveModal').hidden=false; $('moveStatus').textContent='Acomodando tus canciones…';
+  try{
+    const m=await (await fetch(`${WORKER_URL}/transfer/${token}`)).json();
+    if(m.error) throw new Error(m.error);
+    for(let i=0;i<m.songs;i++){
+      $('moveStatus').textContent=`Acomodando canción ${i+1} de ${m.songs}…`;
+      const it=await (await fetch(`${WORKER_URL}/transfer/${token}/item/${i}`)).json();
+      if(it && it.meta && it.b64){ const bin=Uint8Array.from(atob(it.b64),c=>c.charCodeAt(0)); await saveSong({...it.meta, blob:new Blob([bin],{type:it.type||'audio/mpeg'})}); }
+    }
+    try{ if(m.device && m.device!=='anon') localStorage.setItem('milaDevice',m.device); if(m.session) localStorage.setItem('musicSession',m.session); localStorage.setItem('musicMoved','1'); }catch(e){}
+    fetch(`${WORKER_URL}/transfer/${token}`,{method:'DELETE'}).catch(()=>{});
+  }catch(e){ console.warn('mudanza',e); }
+  history.replaceState(null,'',location.pathname+location.search); location.reload();
+}
+const moveToken=(location.hash.match(/mudanza=([a-f0-9]{48})/)||[])[1];
+if(!NATIVE && location.host===OLD_HOST){ moveOut(); }
+else if(!NATIVE && moveToken){ moveIn(moveToken); }
+else {
 refreshCoins(); renderLibrary(); tsReady();
 (()=>{ try{ const c=new URLSearchParams(location.search).get('codigo'); if(!c) return;
   history.replaceState(null,'',location.pathname);
@@ -923,6 +971,7 @@ $('btnVideo').onclick=async()=>{ if(!(await parentGate('Para compartir fuera de 
 $('btnAudio').onclick=async()=>{ if(!(await parentGate('Para compartir fuera de la app, un adulto debe resolver esto.'))) return; exportAudio().catch(e=>setStatus('😢 No se pudo guardar: '+e.message)); };
 const origPlay=play; play=function(onEnd){ origPlay(onEnd); setStatusUI(); };
 draw(stage,-1); draw(stage2,-1); setStatusUI();
+}
 </script>
 </body>
 </html>

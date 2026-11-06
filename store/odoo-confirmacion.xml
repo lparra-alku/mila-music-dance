@@ -6,7 +6,7 @@
       <t t-if="order.x_md_codigo">
         <div style="font-size:18px">🎉 ¡Listo! Este es tu código para canjear tus canciones:</div>
         <div id="md_code" style="font:800 30px ui-monospace,Menlo,monospace;letter-spacing:3px;margin:12px 0;user-select:all" t-out="order.x_md_codigo"/>
-        <a t-att-href="'https://lparra-alku.github.io/mila-music-dance/?codigo=%s' % order.x_md_codigo"
+        <a t-att-href="'https://play.musicdance.app/?codigo=%s' % order.x_md_codigo"
            style="display:inline-block;background:#ffd43b;color:#1a0b3d;font-weight:800;font-size:18px;border-radius:14px;padding:12px 22px;text-decoration:none">
           🎤 Abrir Music Dance y canjear
         </a>

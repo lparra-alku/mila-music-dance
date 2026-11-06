@@ -164,6 +164,31 @@ async function sendMail(env, to, subject, html) {
   await odoo(env, 'mail.mail', 'send', [[id]]);
 }
 
+// Bolsas pagadas por cada correo: al entrar o registrarse con ese correo se suman solas
+async function indexBagByEmail(env, email, code) {
+  const k = `bagsby:${await sha256('bags:' + normEmail(email))}`;
+  const list = JSON.parse((await env.COINS.get(k)) || '[]');
+  if (!list.includes(code)) list.push(code);
+  await env.COINS.put(k, JSON.stringify(list));
+}
+async function claimBagsForEmail(env, email, acctUid) {
+  if (!email) return 0;
+  const k = `bagsby:${await sha256('bags:' + normEmail(email))}`;
+  const list = JSON.parse((await env.COINS.get(k)) || '[]');
+  let total = 0;
+  for (const code of list) {
+    const bag = JSON.parse((await env.COINS.get(`bag:${code}`)) || 'null');
+    if (!bag || bag.used) continue;
+    bag.used = true; bag.usedBy = acctUid; bag.usedAt = new Date().toISOString(); bag.auto = 'correo';
+    await env.COINS.put(`bag:${code}`, JSON.stringify(bag));
+    const w = await getWallet(env, acctUid);
+    w.paid += bag.coins; w.log.push({ t: bag.usedAt, delta: bag.coins, why: `compra ${bag.order} (por correo)`, ref: code });
+    await saveWallet(env, acctUid, w);
+    total += bag.coins;
+  }
+  return total;
+}
+
 async function newSession(env, acct, device) {
   const token = randomId(32);
   await env.COINS.put(`sess:${await sha256(token)}`, acct.id);
@@ -275,6 +300,7 @@ async function processStripeSession(env, sid) {
   const rec = { code, coins, email, amount: ses.amount_total / 100 };
   await env.COINS.put(`bag:${code}`, JSON.stringify({ coins, order: `Stripe ${sid.slice(-8)}`, stripe: sid, created: new Date().toISOString(), used: false }));
   await env.COINS.put(`stripe:${sid}`, JSON.stringify(rec));
+  if (email) await indexBagByEmail(env, email, code);
   // Registro en Odoo (si falla, la venta y el código ya existen; se reintenta con /admin/stripe/odoo)
   try { rec.order = await recordInOdoo(env, ses, rec); await env.COINS.put(`stripe:${sid}`, JSON.stringify(rec)); }
   catch (e) { await env.COINS.put(`stripeerr:${sid}`, JSON.stringify({ when: new Date().toISOString(), error: String(e) }), { expirationTtl: 60 * 60 * 24 * 30 }); }
@@ -454,6 +480,16 @@ export default {
       if (['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(ev.type)) ctx.waitUntil(processStripeSession(env, ev.data.object.id).catch(() => {}));
       return json({ received: true });
     }
+    // Indexa por correo una compra de Stripe ya hecha (administrador)
+    if (url.pathname === '/admin/stripe/indexar' && req.method === 'POST') {
+      if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);
+      const b = await req.json().catch(() => ({}));
+      const rec = JSON.parse((await env.COINS.get(`stripe:${b.session}`)) || 'null');
+      if (!rec || !rec.email) return json({ error: 'Sin registro o sin correo' }, 404);
+      await indexBagByEmail(env, rec.email, rec.code);
+      return json({ ok: true });
+    }
+
     // Registra en Odoo el pago de una venta de Stripe ya hecha (administrador)
     if (url.pathname === '/admin/stripe/pago-odoo' && req.method === 'POST') {
       if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);
@@ -574,7 +610,8 @@ export default {
         await env.COINS.put(ek, acct.id);
         const session = await newSession(env, acct, b.device);
         const moved = await mergeDeviceIntoAccount(env, b.device, `acct_${acct.id}`);
-        return json({ ok: true, session, email, moved, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+        const bought = await claimBagsForEmail(env, email, `acct_${acct.id}`);
+        return json({ ok: true, session, email, moved, bought, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
       }
 
       if (op === 'login') {
@@ -586,7 +623,8 @@ export default {
         if (!ok) return json({ error: 'Correo o contraseña incorrectos.' }, 401);
         const session = await newSession(env, acct, b.device);
         const moved = await mergeDeviceIntoAccount(env, b.device, `acct_${acct.id}`);
-        return json({ ok: true, session, email: acct.email, moved, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+        const bought = await claimBagsForEmail(env, acct.email, `acct_${acct.id}`);
+        return json({ ok: true, session, email: acct.email, moved, bought, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
       }
 
       if (op === 'forgot') {
@@ -619,7 +657,8 @@ export default {
         const acct = JSON.parse(await env.COINS.get(`acct:${id}`));
         acct.pw = await hashPassword(pw);
         const session = await newSession(env, acct, b.device);
-        return json({ ok: true, session, email: acct.email, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+        const bought = await claimBagsForEmail(env, acct.email, `acct_${acct.id}`);
+        return json({ ok: true, session, email: acct.email, bought, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
       }
 
       const acct = await sessionAccount(env, b.session);
@@ -637,7 +676,8 @@ export default {
         acct.email = email; acct.pw = await hashPassword(pw);
         await env.COINS.put(ek, acct.id);
         await env.COINS.put(`acct:${acct.id}`, JSON.stringify(acct));
-        return json({ ok: true, email });
+        const bought = await claimBagsForEmail(env, email, `acct_${acct.id}`);
+        return json({ ok: true, email, bought, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
       }
 
       if (op === 'me') {

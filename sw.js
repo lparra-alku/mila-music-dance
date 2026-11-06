@@ -1,6 +1,6 @@
 // Service worker de Music Dance: permite instalar la app y abrirla sin internet.
 // Cambia VERSION en cada publicación para que los dispositivos tomen la versión nueva.
-const VERSION = 'md-2026-11-06-2';
+const VERSION = 'md-2026-11-06-3';
 const SHELL = ['/', '/index.html', '/lame.min.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

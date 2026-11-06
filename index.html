@@ -200,7 +200,7 @@
     <div class="promo" id="famBox">
       <b>👪 Cuenta familiar</b>
       <div id="accOff">
-        <p class="hint" style="margin:6px 0">Guarda tus canciones aunque borres la app o cambies de dispositivo, y úsalas en todos los de tu familia.</p>
+        <p class="hint" style="margin:6px 0">Guarda tus canciones aunque borres la app o cambies de dispositivo, y úsalas en todos los de tu familia. <b>Si ya compraste, usa el mismo correo con el que pagaste</b> y tus canciones se suman solas.</p>
         <div class="tabs2"><button id="accTabNew" class="on">Crear cuenta</button><button id="accTabIn">Entrar</button></div>
         <input id="accEmail" type="email" placeholder="Correo de un adulto" autocomplete="email" autocapitalize="off" spellcheck="false">
         <input id="accPass" type="password" placeholder="Contraseña (mínimo 8)" autocomplete="new-password">
@@ -513,7 +513,7 @@ async function accountCall(op, body){
 }
 async function afterLogin(j, msgOk){
   setSession(j.session, j.email||ACC_EMAIL); if(j.wallet) showWallet(j.wallet);
-  $('famMsg').textContent = msgOk + (j.moved?` Sumamos ${j.moved} canciones de este dispositivo.`:'');
+  $('famMsg').textContent = msgOk + (j.bought?` 🎉 Se sumaron ${j.bought} canciones de tu compra.`:'') + (j.moved?` Sumamos ${j.moved} canciones de este dispositivo.`:'');
   $('accPass').value=''; await claimPendingBag();
 }
 async function accGo(){
@@ -538,7 +538,7 @@ async function accReset(){
 }
 async function accAddEmail(){
   const email=$('accEmail2').value.trim(), password=$('accPass2').value;
-  try{ const j=await accountCall('set-email',{email,password}); setSession(SESSION,j.email); $('accPass2').value=''; $('famMsg').textContent='✅ Listo, ya puedes entrar con tu correo.'; }
+  try{ const j=await accountCall('set-email',{email,password}); setSession(SESSION,j.email); $('accPass2').value=''; if(j.wallet) showWallet(j.wallet); $('famMsg').textContent='✅ Listo, ya puedes entrar con tu correo.'+(j.bought?` 🎉 Se sumaron ${j.bought} canciones de tu compra.`:''); }
   catch(e){ $('famMsg').textContent='😕 '+e.message; }
 }
 async function famLink(){

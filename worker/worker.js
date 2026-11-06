@@ -12,6 +12,7 @@
 const ALLOWED_ORIGINS = [
   'https://lparra-alku.github.io',
   'https://play.musicdance.app',
+  'https://musicdance-play.pages.dev',   // dirección provisional de Cloudflare Pages
   'http://localhost:8765',
   'http://127.0.0.1:8765',
   'https://localhost',        // app nativa iOS y Android (Capacitor)

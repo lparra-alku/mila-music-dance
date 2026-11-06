@@ -11,7 +11,7 @@ Intermediario gratuito en Cloudflare que guarda la llave de ElevenLabs y limita 
 Si algo falla y hay que desactivar la verificación de emergencia: pon `REQUIRE_TURNSTILE = "0"` en `wrangler.toml` y vuelve a publicar.
 
 ## Monedero
-Cada usuario tiene dos bolsillos. Las **gratis del día** (`FREE_DAILY`, hoy 5) se gastan primero. Las **compradas** son permanentes y solo suben con una compra confirmada.
+Cada usuario tiene dos bolsillos. Las **gratis del día** (`FREE_DAILY`, hoy 2) se gastan primero. Las **compradas** son permanentes y solo suben con una compra confirmada.
 - `GET /wallet?uid=...` devuelve `{free, freeMax, paid, total}`.
 - `POST /wallet/grant` abona monedas compradas. Exige la cabecera `X-Admin-Key` y un `ref` único por compra: si la misma compra llega dos veces, se abona una sola vez. La llave vive en `~/.config/musicdance/admin_key`, nunca en el repositorio.
 - Los topes globales y por IP aplican solo a las monedas gratis. Las compradas ya están pagadas.

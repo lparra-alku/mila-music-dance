@@ -78,7 +78,7 @@ Cada canción cantada por la inteligencia artificial cuesta una moneda. Cada dí
 ## Notas para la revisión (Apple: App Review Information; Google: instrucciones de acceso)
 
 ```
-La app no requiere iniciar sesión. Para probar la puerta parental, resuelva la multiplicación que aparece (por ejemplo "siete por ocho" = 56). La cuenta familiar es opcional y se crea desde Conseguir más. Cada dispositivo recibe 5 canciones con IA gratis al día; si necesitan más para la revisión, usen el código de promoción [CÓDIGO PARA REVISORES].
+La app no requiere iniciar sesión. Para probar la puerta parental, resuelva la multiplicación que aparece (por ejemplo "siete por ocho" = 56). La cuenta familiar es opcional y se crea desde Conseguir más. Cada dispositivo recibe 2 canciones con IA gratis al día; si necesitan más para la revisión, usen el código de promoción [CÓDIGO PARA REVISORES].
 ```
 
 Antes de enviar a revisión, crear un código de promoción exclusivo para los revisores con varias canciones diarias.

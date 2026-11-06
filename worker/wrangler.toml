@@ -3,7 +3,7 @@ main = "worker.js"
 compatibility_date = "2026-09-01"
 
 [vars]
-FREE_DAILY = "5"          # monedas gratis por dispositivo al dia (poner "0" al lanzar la venta)
+FREE_DAILY = "2"          # monedas gratis por dispositivo al dia (los codigos de promo pueden dar mas)
 MONTHLY_CREDITS = "38000"   # respaldo si no se puede leer el saldo real de ElevenLabs
 RESERVE_CREDITS = "1000"    # reserva que nunca se gasta
 DAILY_GLOBAL_SONGS = "40"   # tope de canciones al dia entre TODOS los usuarios

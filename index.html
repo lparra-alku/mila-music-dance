@@ -950,7 +950,7 @@ async function moveIn(token){
       if(it && it.meta && it.b64){ const bin=Uint8Array.from(atob(it.b64),c=>c.charCodeAt(0)); await saveSong({...it.meta, blob:new Blob([bin],{type:it.type||'audio/mpeg'})}); }
     }
     try{ if(m.device && m.device!=='anon') localStorage.setItem('milaDevice',m.device); if(m.session) localStorage.setItem('musicSession',m.session); localStorage.setItem('musicMoved','1'); }catch(e){}
-    fetch(`${WORKER_URL}/transfer/${token}`,{method:'DELETE'}).catch(()=>{});
+    await fetch(`${WORKER_URL}/transfer/${token}`,{method:'DELETE',keepalive:true}).catch(()=>{});   // borra el paquete antes de recargar
   }catch(e){ console.warn('mudanza',e); }
   history.replaceState(null,'',location.pathname+location.search); location.reload();
 }

@@ -69,6 +69,11 @@
   .promoRow{display:flex; gap:8px; margin-top:8px;}
   .promoRow input{flex:1; min-width:0; border:0; border-radius:12px; padding:10px 12px; font-size:17px; font-weight:700; letter-spacing:1px; text-transform:uppercase; user-select:text;}
   .promoRow button{border:0; border-radius:12px; padding:10px 14px; font-weight:800; font-size:16px; background:var(--accent3); color:#1a0b3d;}
+  .tabs2{display:flex; gap:6px; margin:8px 0}
+  .tabs2 button{flex:1; border:0; border-radius:12px; padding:9px; font-weight:800; background:#41208f; color:#fff}
+  .tabs2 button.on{background:var(--accent3); color:#1a0b3d}
+  #famBox input{width:100%; border:0; border-radius:12px; padding:11px 12px; font-size:16px; margin-top:8px; user-select:text}
+  .pack button.buy{background:var(--accent2); color:#1a0b3d}
   .promoMsg{min-height:20px; font-size:14px; margin-top:8px;}
   .linkbtn{background:none; border:0; color:#fff; opacity:.7; font-size:15px; margin-top:8px; text-decoration:underline;}
   #coinsCard .row2{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
@@ -175,23 +180,35 @@
     <h3>🪙 Tienda de monedas</h3>
     <p>Cada moneda es una canción cantada por la IA. Las monedas compradas no caducan.</p>
     <div id="shopPacks"></div>
-    <p class="hint" id="shopNote">Las compras llegan muy pronto. Se pagarán con la cuenta de la tienda de tu teléfono.</p>
+    <p class="hint" id="shopNote">Pago seguro con tarjeta, Apple Pay o Google Pay a través de Stripe. Las canciones se suman a tu cuenta.</p>
     <div class="promo" id="famBox">
       <b>👪 Cuenta familiar</b>
-      <div id="famOff">
-        <p class="hint" style="margin:6px 0">Guarda tus monedas aunque borres la app o cambies de teléfono, y compártelas entre los dispositivos de la familia.</p>
-        <div class="promoRow"><button id="famCreate" style="flex:1">Crear cuenta familiar</button></div>
-        <div class="promoRow"><input id="famInput" placeholder="FAM-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false"><button id="famLink">Entrar</button></div>
+      <div id="accOff">
+        <p class="hint" style="margin:6px 0">Guarda tus canciones aunque borres la app o cambies de dispositivo, y úsalas en todos los de tu familia.</p>
+        <div class="tabs2"><button id="accTabNew" class="on">Crear cuenta</button><button id="accTabIn">Entrar</button></div>
+        <input id="accEmail" type="email" placeholder="Correo de un adulto" autocomplete="email" autocapitalize="off" spellcheck="false">
+        <input id="accPass" type="password" placeholder="Contraseña (mínimo 8)" autocomplete="new-password">
+        <div class="promoRow"><button id="accGo" style="flex:1">Crear cuenta</button></div>
+        <button class="linkbtn" id="accForgot">¿Olvidaste tu contraseña?</button>
+        <div id="accReset" hidden>
+          <p class="hint" style="margin:6px 0">Te mandamos un código de 6 números a tu correo. Escríbelo junto con tu contraseña nueva.</p>
+          <input id="accCode" inputmode="numeric" placeholder="Código de 6 números" autocomplete="one-time-code">
+          <input id="accNewPass" type="password" placeholder="Contraseña nueva (mínimo 8)" autocomplete="new-password">
+          <div class="promoRow"><button id="accResetGo" style="flex:1">Cambiar contraseña y entrar</button></div>
+        </div>
+        <button class="linkbtn" id="accLegacyShow">Tengo un código familiar antiguo</button>
+        <div class="promoRow" id="accLegacy" hidden><input id="famInput" placeholder="FAM-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false"><button id="famLink">Entrar</button></div>
       </div>
-      <div id="famOn" hidden>
-        <p class="hint" style="margin:6px 0">✅ Este dispositivo usa la cuenta familiar. Tus monedas compradas y tus códigos están a salvo.</p>
-        <div class="promoRow"><button id="famRotate" style="flex:1">Ver código nuevo</button><button id="famLogout" style="flex:1;background:#41208f;color:#fff">Salir aquí</button></div>
-        <button class="linkbtn" id="famDelete" style="color:#ff8fb8">Borrar cuenta familiar</button>
-      </div>
-      <div id="famCodeBox" hidden style="margin-top:10px;background:#2b1466;border-radius:12px;padding:12px;text-align:center">
-        <div class="hint">Tu código familiar. Guárdalo en un lugar seguro: es la única forma de recuperar tus monedas.</div>
-        <div id="famCode" style="font:800 20px ui-monospace,Menlo,monospace;letter-spacing:1px;margin:8px 0;user-select:text"></div>
-        <button id="famCopy" style="border:0;border-radius:10px;padding:8px 12px;font-weight:800;background:var(--accent3);color:#1a0b3d">Copiar</button>
+      <div id="accOn" hidden>
+        <p class="hint" style="margin:6px 0">✅ Entraste como <b id="accWho"></b>. Tus canciones compradas y tus códigos están a salvo.</p>
+        <div id="accAddEmail" hidden>
+          <p class="hint" style="margin:6px 0">Tu cuenta es de las antiguas, con código familiar. Agrega un correo y contraseña para entrar más fácil.</p>
+          <input id="accEmail2" type="email" placeholder="Correo de un adulto" autocomplete="email" autocapitalize="off">
+          <input id="accPass2" type="password" placeholder="Contraseña (mínimo 8)" autocomplete="new-password">
+          <div class="promoRow"><button id="accAddGo" style="flex:1">Guardar correo</button></div>
+        </div>
+        <div class="promoRow"><button id="famLogout" style="flex:1;background:#41208f;color:#fff">Salir en este dispositivo</button></div>
+        <button class="linkbtn" id="famDelete" style="color:#ff8fb8">Borrar cuenta</button>
       </div>
       <div class="promoMsg" id="famMsg"></div>
     </div>
@@ -399,7 +416,7 @@ function parentGate(purpose){
 }
 
 /* ===================== TIENDA ===================== */
-const PACKS=[{id:'coins_20',coins:20,price:'2.99 USD',tag:'Para empezar'},{id:'coins_80',coins:80,price:'9.99 USD',tag:'El favorito de las familias'}];
+let PACKS=null;
 async function redeemPromo(){
   const code=$('promoInput').value.trim(), msg=$('promoMsg');
   if(!code){ msg.textContent='Escribe el código.'; return; }
@@ -417,20 +434,33 @@ async function redeemPromo(){
   }catch(e){ msg.textContent='Sin conexión. Inténtalo de nuevo.'; }
   finally{ $('promoBtn').disabled=false; }
 }
-async function openShop(){
-  if(!(await parentGate('Para entrar a la tienda, un adulto debe resolver esto.'))) return;
-  const box=$('shopPacks'); box.innerHTML='';
-  for(const p of PACKS){ const d=document.createElement('div'); d.className='pack';
-    d.innerHTML=`<div><b>🪙 ${p.coins} canciones</b><small>${p.tag}</small></div><button disabled>${p.price}</button>`;
-    box.appendChild(d); }
-  $('promoMsg').textContent=''; $('famMsg').textContent=''; $('famCodeBox').hidden=true; renderFamily();
+async function loadPacks(){
+  if(PACKS) return PACKS;
+  try{ const j=await (await fetch(`${WORKER_URL}/packs`)).json(); PACKS=j.packs||[]; PACKS.ready=j.ready; }catch{ PACKS=[]; }
+  return PACKS;
+}
+function buyPack(code){
+  const em = ACC_EMAIL ? `&email=${encodeURIComponent(ACC_EMAIL)}` : '';
+  location.href = `${WORKER_URL}/buy?pack=${encodeURIComponent(code)}${em}`;
+}
+async function openShop(skipGate){
+  if(!skipGate && !(await parentGate('Para entrar a la tienda, un adulto debe resolver esto.'))) return;
+  const box=$('shopPacks'); box.innerHTML='<p class="hint">Cargando…</p>';
+  $('promoMsg').textContent=''; $('famMsg').textContent=''; renderFamily();
   $('shopModal').hidden=false;
+  const packs=await loadPacks(); box.innerHTML='';
+  const tags={20:'Para probar',60:'La favorita de las familias',150:'Para fiestas y artistas en serie'};
+  for(const p of packs){ const d=document.createElement('div'); d.className='pack';
+    d.innerHTML=`<div><b>🪙 ${p.coins} canciones</b><small>${tags[p.coins]||''}</small></div><button class="buy" ${packs.ready?'':'disabled'}>$${Math.round(p.price)} MXN</button>`;
+    d.querySelector('button').onclick=()=>buyPack(p.code);
+    box.appendChild(d); }
+  if(!packs.length) box.innerHTML='<p class="hint">No pudimos cargar los paquetes. Revisa tu internet.</p>';
 }
 
 let WALLET={free:0,freeMax:0,paid:0,total:0};
 function showWallet(w){
   WALLET=w; $('coins').textContent=w.total;
-  const fam = SESSION ? ' 👪 Cuenta familiar.' : '';
+  const fam = SESSION ? ` 👪 ${ACC_EMAIL||'Cuenta familiar'}.` : '';
   const promo = w.promo ? ` 🎁 Código ${w.promo.code}: ${w.promo.daily} gratis al día.` : '';
   $('coinsDetail').textContent = (w.paid>0
     ? `${w.free} gratis de hoy · ${w.paid} compradas. Cada canción con IA cuesta una moneda.`
@@ -438,45 +468,103 @@ function showWallet(w){
 }
 /* ===================== CUENTA FAMILIAR ===================== */
 let SESSION=(()=>{ try{ return localStorage.getItem('musicSession')||''; }catch{ return ''; } })();
-function setSession(t){ SESSION=t||''; try{ t? localStorage.setItem('musicSession',t) : localStorage.removeItem('musicSession'); }catch{} renderFamily(); }
-function renderFamily(){ if(!$('famOn')) return; $('famOn').hidden=!SESSION; $('famOff').hidden=!!SESSION; }
-function showFamilyCode(code){ $('famCode').textContent=code; $('famCodeBox').hidden=false; }
+let ACC_EMAIL=(()=>{ try{ return localStorage.getItem('musicEmail')||''; }catch{ return ''; } })();
+let ACC_MODE='new';
+function setSession(t, email){
+  SESSION=t||''; if(!t) email='';
+  if(email!==undefined) ACC_EMAIL=email||'';
+  try{ t? localStorage.setItem('musicSession',t) : localStorage.removeItem('musicSession'); ACC_EMAIL? localStorage.setItem('musicEmail',ACC_EMAIL) : localStorage.removeItem('musicEmail'); }catch{}
+  renderFamily();
+}
+function renderFamily(){
+  if(!$('accOn')) return;
+  $('accOn').hidden=!SESSION; $('accOff').hidden=!!SESSION;
+  $('accWho').textContent = ACC_EMAIL || 'tu cuenta familiar';
+  $('accAddEmail').hidden = !SESSION || !!ACC_EMAIL;
+  $('accTabNew').classList.toggle('on',ACC_MODE==='new'); $('accTabIn').classList.toggle('on',ACC_MODE==='in');
+  $('accGo').textContent = ACC_MODE==='new' ? 'Crear cuenta' : 'Entrar';
+  $('accPass').autocomplete = ACC_MODE==='new' ? 'new-password' : 'current-password';
+}
 async function accountCall(op, body){
   const r=await fetch(`${WORKER_URL}/account/${op}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:DEVICE_ID, session:SESSION, ...body})});
   const j=await r.json().catch(()=>({error:'Respuesta inválida'}));
   if(j.noSession) setSession('');
-  if(!r.ok) throw new Error(j.error||'No se pudo');
+  if(!r.ok){ const e=new Error(j.error||'No se pudo'); e.data=j; throw e; }
   return j;
 }
-async function famCreate(){
-  const msg=$('famMsg'); msg.textContent='Creando…';
-  try{ const j=await accountCall('create'); setSession(j.session); showWallet(j.wallet); showFamilyCode(j.familyCode);
-    msg.textContent = j.moved? `✅ Cuenta creada. Pasamos ${j.moved} monedas compradas a tu cuenta.` : '✅ Cuenta creada.'; }
-  catch(e){ msg.textContent='😕 '+e.message; }
+async function afterLogin(j, msgOk){
+  setSession(j.session, j.email||ACC_EMAIL); if(j.wallet) showWallet(j.wallet);
+  $('famMsg').textContent = msgOk + (j.moved?` Sumamos ${j.moved} canciones de este dispositivo.`:'');
+  $('accPass').value=''; await claimPendingBag();
+}
+async function accGo(){
+  const email=$('accEmail').value.trim(), password=$('accPass').value, msg=$('famMsg');
+  if(!email||!password){ msg.textContent='Escribe tu correo y tu contraseña.'; return; }
+  msg.textContent = ACC_MODE==='new' ? 'Creando tu cuenta…' : 'Entrando…';
+  try{ const j=await accountCall(ACC_MODE==='new'?'register':'login',{email,password});
+    await afterLogin(j, ACC_MODE==='new' ? '✅ Cuenta creada.' : '✅ ¡Bienvenido de vuelta!'); }
+  catch(e){ msg.textContent='😕 '+e.message; if(e.data&&e.data.exists){ ACC_MODE='in'; renderFamily(); } }
+}
+async function accForgot(){
+  const email=$('accEmail').value.trim();
+  if(!email){ $('famMsg').textContent='Escribe arriba tu correo y vuelve a tocar "¿Olvidaste tu contraseña?".'; return; }
+  try{ await accountCall('forgot',{email}); $('accReset').hidden=false; $('famMsg').textContent='📧 Si ese correo tiene cuenta, te llegará un código en un momento. Revisa también tu spam.'; }
+  catch(e){ $('famMsg').textContent='😕 '+e.message; }
+}
+async function accReset(){
+  const email=$('accEmail').value.trim(), code=$('accCode').value.trim(), password=$('accNewPass').value;
+  try{ const j=await accountCall('reset',{email,code,password}); $('accReset').hidden=true; $('accCode').value=''; $('accNewPass').value='';
+    await afterLogin(j,'✅ Contraseña cambiada. Ya entraste.'); }
+  catch(e){ $('famMsg').textContent='😕 '+e.message; }
+}
+async function accAddEmail(){
+  const email=$('accEmail2').value.trim(), password=$('accPass2').value;
+  try{ const j=await accountCall('set-email',{email,password}); setSession(SESSION,j.email); $('accPass2').value=''; $('famMsg').textContent='✅ Listo, ya puedes entrar con tu correo.'; }
+  catch(e){ $('famMsg').textContent='😕 '+e.message; }
 }
 async function famLink(){
   const code=$('famInput').value.trim(), msg=$('famMsg');
   if(!code){ msg.textContent='Escribe tu código familiar.'; return; }
   msg.textContent='Entrando…';
-  try{ const j=await accountCall('link',{code}); setSession(j.session); showWallet(j.wallet); $('famInput').value='';
-    msg.textContent = '✅ Listo, este dispositivo ya usa tu cuenta familiar.'+(j.moved?` Sumamos ${j.moved} monedas de este dispositivo.`:''); }
+  try{ const j=await accountCall('link',{code}); $('famInput').value=''; await afterLogin(j,'✅ Listo, entraste a tu cuenta familiar.'); }
   catch(e){ msg.textContent='😕 '+e.message; }
 }
-async function famRotate(){
-  if(!confirm('Vamos a crear un código familiar nuevo. El anterior dejará de servir. Los dispositivos que ya usan la cuenta siguen igual. ¿Continuar?')) return;
-  try{ const j=await accountCall('rotate'); showFamilyCode(j.familyCode); $('famMsg').textContent='✅ Código nuevo listo. Guárdalo.'; }
-  catch(e){ $('famMsg').textContent='😕 '+e.message; }
-}
 async function famLogout(){
-  if(!confirm('¿Salir de la cuenta familiar en este dispositivo? Tus monedas siguen en la cuenta y vuelves a entrar con tu código.')) return;
+  if(!confirm('¿Salir de tu cuenta en este dispositivo? Tus canciones siguen en la cuenta y vuelves a entrar con tu correo.')) return;
   try{ await accountCall('logout'); }catch(e){}
-  setSession(''); $('famCodeBox').hidden=true; $('famMsg').textContent='Saliste de la cuenta en este dispositivo.'; refreshCoins();
+  setSession(''); $('famMsg').textContent='Saliste de tu cuenta en este dispositivo.'; refreshCoins();
 }
 async function famDelete(){
-  if(!confirm('⚠️ Borrar la cuenta familiar elimina para siempre tus monedas compradas y tus códigos, en todos los dispositivos. ¿Seguro?')) return;
+  if(!confirm('⚠️ Borrar la cuenta elimina para siempre tus canciones compradas y tus códigos, en todos los dispositivos. ¿Seguro?')) return;
   if(prompt('Para confirmar escribe BORRAR')!=='BORRAR') return;
-  try{ await accountCall('delete',{confirm:'BORRAR'}); setSession(''); $('famCodeBox').hidden=true; $('famMsg').textContent='La cuenta familiar se borró.'; refreshCoins(); }
+  try{ await accountCall('delete',{confirm:'BORRAR'}); setSession(''); $('famMsg').textContent='La cuenta se borró.'; refreshCoins(); }
   catch(e){ $('famMsg').textContent='😕 '+e.message; }
+}
+
+/* ---- Llegada desde el pago de Stripe: ?pago=cs_... ---- */
+function pendingBag(){ try{ return JSON.parse(localStorage.getItem('musicPendingBag')||'null'); }catch{ return null; } }
+async function claimPendingBag(){
+  const pb=pendingBag(); if(!pb||!SESSION) return false;
+  const r=await fetch(`${WORKER_URL}/promo/redeem`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:DEVICE_ID,code:pb.code,session:SESSION})});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok||r.status===410){ try{ localStorage.removeItem('musicPendingBag'); }catch{}
+    if(j.total!==undefined) showWallet(j);
+    $('promoMsg').textContent = r.ok ? `🎉 ¡Listo! Se sumaron ${pb.coins} canciones a tu cuenta.` : 'Estas canciones ya estaban en una cuenta.';
+    return true; }
+  return false;
+}
+async function handlePayment(sid){
+  history.replaceState(null,'',location.pathname);
+  $('coinsDetail').textContent='Confirmando tu pago…';
+  let st=null;
+  for(let i=0;i<12;i++){ try{ st=await (await fetch(`${WORKER_URL}/buy/status?session=${encodeURIComponent(sid)}`)).json(); }catch{} if(st&&st.ok) break; await new Promise(r=>setTimeout(r,2000)); }
+  if(!st||!st.ok){ alert(st&&st.pending ? 'Tu pago está pendiente. En cuanto se confirme te mandaremos el código por correo.' : 'No pudimos confirmar tu pago. Revisa tu correo: ahí te llegará el código.'); refreshCoins(); return; }
+  if(!st.used) try{ localStorage.setItem('musicPendingBag', JSON.stringify({code:st.code, coins:st.coins})); }catch{}
+  await openShop(true);
+  if(SESSION){ if(!(await claimPendingBag())) $('promoMsg').textContent=`🎉 Pago listo. Tu código es ${st.code}.`; }
+  else { $('famMsg').textContent=`🎉 ¡Pago listo! Crea tu cuenta o entra para guardar tus ${st.coins} canciones.`;
+    if(st.email){ $('accEmail').value=st.email; }
+    $('famBox').scrollIntoView({behavior:'smooth',block:'center'}); }
 }
 
 async function refreshCoins(){
@@ -916,8 +1004,10 @@ $('btnMakeAI').onclick=async()=>{
 };
 $('btnMoreCoins').onclick=openShop;
 $('promoBtn').onclick=redeemPromo;
-$('famCreate').onclick=famCreate; $('famLink').onclick=famLink; $('famRotate').onclick=famRotate; $('famLogout').onclick=famLogout; $('famDelete').onclick=famDelete;
-$('famCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText($('famCode').textContent); $('famMsg').textContent='📋 Código copiado.'; }catch{ $('famMsg').textContent='Mantén presionado el código para copiarlo.'; } };
+$('accTabNew').onclick=()=>{ ACC_MODE='new'; renderFamily(); }; $('accTabIn').onclick=()=>{ ACC_MODE='in'; renderFamily(); };
+$('accGo').onclick=accGo; $('accForgot').onclick=accForgot; $('accResetGo').onclick=accReset; $('accAddGo').onclick=accAddEmail;
+$('accLegacyShow').onclick=()=>{ $('accLegacy').hidden=!$('accLegacy').hidden; };
+$('famLink').onclick=famLink; $('famLogout').onclick=famLogout; $('famDelete').onclick=famDelete;
 $('shopClose').onclick=()=>{ $('shopModal').hidden=true; };
 /* ===================== MUDANZA A play.musicdance.app =====================
  * La dirección vieja empaca identificador, sesión y biblioteca en el Worker (24 h) y redirige.
@@ -959,10 +1049,11 @@ if(!NATIVE && location.host===OLD_HOST){ moveOut(); }
 else if(!NATIVE && moveToken){ moveIn(moveToken); }
 else {
 refreshCoins(); renderLibrary(); tsReady();
+(()=>{ const sid=new URLSearchParams(location.search).get('pago'); if(sid && /^cs_/.test(sid)) setTimeout(()=>handlePayment(sid),400); })();
 (()=>{ try{ const c=new URLSearchParams(location.search).get('codigo'); if(!c) return;
   history.replaceState(null,'',location.pathname);
   setTimeout(async()=>{ await openShop(); if(!$('shopModal').hidden){ $('promoInput').value=c;
-    $('promoMsg').textContent = SESSION ? 'Toca Canjear para sumar tus canciones.' : 'Primero crea tu cuenta familiar (es gratis) y luego toca Canjear.'; } },600);
+    $('promoMsg').textContent = SESSION ? 'Toca Canjear para sumar tus canciones.' : 'Primero crea tu cuenta (es gratis) y luego toca Canjear.'; } },600);
 }catch(e){} })();
 $('btnRandom').onclick=()=>{ if(!song)return; autoChoreo(Math.floor(Math.random()*1e9)); };
 $('btnPlay0').onclick=$('btnPlay1').onclick=()=>{ play(); setStatusUI(); };

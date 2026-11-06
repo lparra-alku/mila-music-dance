@@ -144,6 +144,26 @@ async function mergeDeviceIntoAccount(env, device, acctUid) {
   await saveWallet(env, dev, dw);
   return moved;
 }
+/* --- Correo y contraseña ---
+ * La contraseña se guarda como PBKDF2-SHA256 (100 000 vueltas, sal aleatoria). Nunca en claro.
+ * El correo se indexa por su huella: email:<sha256(correo)> -> id de la cuenta.
+ */
+const normEmail = (e) => String(e || '').trim().toLowerCase().slice(0, 120);
+const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+async function hashPassword(pw, saltHex) {
+  const salt = saltHex ? Uint8Array.from(saltHex.match(/../g).map(h => parseInt(h, 16))) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 100000 }, key, 256);
+  const hex = (u) => [...new Uint8Array(u)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return { salt: hex(salt), hash: hex(bits) };
+}
+async function emailKey(email) { return `email:${await sha256('email:' + normEmail(email))}`; }
+async function sendMail(env, to, subject, html) {
+  // Odoo manda el correo con su servidor de salida
+  const id = await odoo(env, 'mail.mail', 'create', [{ email_to: to, subject, body_html: html, auto_delete: true }]);
+  await odoo(env, 'mail.mail', 'send', [[id]]);
+}
+
 async function newSession(env, acct, device) {
   const token = randomId(32);
   await env.COINS.put(`sess:${await sha256(token)}`, acct.id);
@@ -216,6 +236,73 @@ async function processPaidOrder(env, orderId) {
   await odoo(env, 'sale.order', 'write', [[orderId], { x_md_codigo: code }]); // lo muestra la página de confirmación del pago
   await odoo(env, 'sale.order', 'message_post', [[orderId]], { body, partner_ids: [o.partner_id[0]], message_type: 'comment', subtype_xmlid: 'mail.mt_comment' });
   return { ok: true, code, coins, order: o.name };
+}
+
+/* ===================== COBRO DIRECTO CON STRIPE =====================
+ * /buy?pack=MD-BOLSA-60 crea una sesión de Stripe Checkout con el precio del producto en Odoo
+ * y redirige a la página de pago. Al pagar, Stripe regresa a la app con ?pago=<sesión>.
+ * El Worker NUNCA confía en la URL: le pregunta a Stripe si la sesión está pagada.
+ * Luego crea la bolsa de canciones y registra y confirma el pedido en Odoo.
+ */
+async function stripe(env, method, path, params) {
+  const body = params ? new URLSearchParams(params).toString() : undefined;
+  const r = await fetch(`https://api.stripe.com/v1/${path}`, { method, body,
+    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' } });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message);
+  return j;
+}
+async function packFromOdoo(env, code) {
+  const ck = `packcache:${code}`;
+  const c = await env.COINS.get(ck);
+  if (c) return JSON.parse(c);
+  const [p] = await odoo(env, 'product.product', 'search_read', [[['default_code', '=', code], ['sale_ok', '=', true]]], { fields: ['id', 'name', 'list_price'], limit: 1 });
+  if (!p) return null;
+  const m = /^MD-BOLSA-(\d+)$/.exec(code);
+  const pack = { productId: p.id, name: p.name, price: p.list_price, coins: parseInt(m[1], 10), code };
+  await env.COINS.put(ck, JSON.stringify(pack), { expirationTtl: 600 });
+  return pack;
+}
+async function processStripeSession(env, sid) {
+  const prev = JSON.parse((await env.COINS.get(`stripe:${sid}`)) || 'null');
+  if (prev) return { ok: true, ...prev };
+  const ses = await stripe(env, 'GET', `checkout/sessions/${encodeURIComponent(sid)}`);
+  if (ses.payment_status !== 'paid') return { ok: false, pending: true, status: ses.payment_status };
+  const coins = parseInt(ses.metadata && ses.metadata.coins, 10);
+  if (!coins) return { ok: false, error: 'Sesión sin bolsa' };
+  const code = makeBagCode();
+  const email = (ses.customer_details && ses.customer_details.email) || '';
+  const name = (ses.customer_details && ses.customer_details.name) || email;
+  const rec = { code, coins, email, amount: ses.amount_total / 100 };
+  await env.COINS.put(`bag:${code}`, JSON.stringify({ coins, order: `Stripe ${sid.slice(-8)}`, stripe: sid, created: new Date().toISOString(), used: false }));
+  await env.COINS.put(`stripe:${sid}`, JSON.stringify(rec));
+  // Registro en Odoo (si falla, la venta y el código ya existen; se reintenta con /admin/stripe/odoo)
+  try { rec.order = await recordInOdoo(env, ses, rec); await env.COINS.put(`stripe:${sid}`, JSON.stringify(rec)); }
+  catch (e) { await env.COINS.put(`stripeerr:${sid}`, JSON.stringify({ when: new Date().toISOString(), error: String(e) }), { expirationTtl: 60 * 60 * 24 * 30 }); }
+  return { ok: true, ...rec };
+}
+async function recordInOdoo(env, ses, rec) {
+  const pack = await packFromOdoo(env, ses.metadata.pack);
+  const email = rec.email || 'sin-correo@musicdance.app';
+  let [partner] = await odoo(env, 'res.partner', 'search_read', [[['email', '=ilike', email]]], { fields: ['id'], limit: 1 });
+  const partnerId = partner ? partner.id : await odoo(env, 'res.partner', 'create', [{ name: (ses.customer_details && ses.customer_details.name) || email, email }]);
+  const orderId = await odoo(env, 'sale.order', 'create', [{ partner_id: partnerId, client_order_ref: `Stripe ${ses.id}`, x_md_codigo: rec.code,
+    order_line: [[0, 0, { product_id: pack.productId, product_uom_qty: 1, price_unit: rec.amount, tax_ids: [[6, 0, []]] }]] }]);
+  await env.COINS.put(`order:${orderId}`, rec.code);   // la automatización de Odoo ve que ya se procesó
+  await odoo(env, 'sale.order', 'action_confirm', [[orderId]]);
+  const link = `${APP_URL}?codigo=${rec.code}`;
+  await odoo(env, 'sale.order', 'message_post', [[orderId]], { partner_ids: [partnerId], message_type: 'comment', subtype_xmlid: 'mail.mt_comment',
+    body: `<p>¡Gracias por tu compra! 🎶 Pagaste ${rec.coins} canciones para Music Dance.</p><p>Si al pagar ya entraste a tu cuenta en la app, las canciones ya están ahí. Si no, este es tu código de respaldo:</p><p style="font-size:22px;font-weight:bold;letter-spacing:2px">${rec.code}</p><p><a href="${link}">Toca aquí para abrir Music Dance y canjearlo</a>.</p>` });
+  return orderId;
+}
+async function verifyStripeSignature(secret, header, body) {
+  const parts = Object.fromEntries(String(header || '').split(',').map(kv => kv.split('=')));
+  if (!parts.t || !parts.v1) return false;
+  if (Math.abs(Date.now() / 1000 - parseInt(parts.t, 10)) > 600) return false;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${parts.t}.${body}`));
+  const hex = [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return hex === parts.v1;
 }
 
 const cleanCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 32);
@@ -300,6 +387,61 @@ export default {
       await saveWallet(env, uid, w);
       await env.COINS.put(`grant:${ref}`, uid);
       return json({ ok: true, ...(await walletView(env, uid, FREE)) });
+    }
+
+    // ---- Cobro directo con Stripe ----
+    if (url.pathname === '/buy' && req.method === 'GET') {
+      if (!env.STRIPE_SECRET_KEY) return json({ error: 'Pagos aún no configurados' }, 503);
+      const pack = await packFromOdoo(env, String(url.searchParams.get('pack') || '').toUpperCase());
+      if (!pack) return json({ error: 'Esa bolsa no existe' }, 404);
+      const params = {
+        mode: 'payment', locale: 'es-419',
+        'line_items[0][quantity]': '1',
+        'line_items[0][price_data][currency]': 'mxn',
+        'line_items[0][price_data][unit_amount]': String(Math.round(pack.price * 100)),
+        'line_items[0][price_data][product_data][name]': `${pack.name} · Music Dance`,
+        'line_items[0][price_data][product_data][description]': 'Canciones cantadas por IA. No caducan.',
+        'metadata[pack]': pack.code, 'metadata[coins]': String(pack.coins),
+        'payment_intent_data[description]': `Music Dance: ${pack.name}`,
+        success_url: `${APP_URL}?pago={CHECKOUT_SESSION_ID}`,
+        cancel_url: 'https://www.musicdance.app/#bolsas',
+      };
+      const em = normEmail(url.searchParams.get('email'));
+      if (validEmail(em)) params.customer_email = em;
+      const ses = await stripe(env, 'POST', 'checkout/sessions', params);
+      return Response.redirect(ses.url, 303);
+    }
+    if (url.pathname === '/packs' && req.method === 'GET') {
+      let list = JSON.parse((await env.COINS.get('packcache:list')) || 'null');
+      if (!list) {
+        const rows = await odoo(env, 'product.product', 'search_read', [[['default_code', '=like', 'MD-BOLSA-%'], ['sale_ok', '=', true], ['is_published', '=', true]]], { fields: ['default_code', 'name', 'list_price'], order: 'list_price' });
+        list = rows.map(r => ({ code: r.default_code, name: r.name, price: r.list_price, coins: parseInt(r.default_code.split('-')[2], 10) }));
+        await env.COINS.put('packcache:list', JSON.stringify(list), { expirationTtl: 600 });
+      }
+      return json({ packs: list, ready: !!env.STRIPE_SECRET_KEY });
+    }
+    if (url.pathname === '/buy/status' && req.method === 'GET') {
+      if (!ALLOWED_ORIGINS.includes(origin)) return json({ error: 'Esta app no está autorizada.' }, 403);
+      const sid = String(url.searchParams.get('session') || '');
+      if (!/^cs_(live|test)_[A-Za-z0-9]+$/.test(sid)) return json({ error: 'Pago inválido' }, 400);
+      try { const r = await processStripeSession(env, sid); const bag = r.code && JSON.parse((await env.COINS.get(`bag:${r.code}`)) || 'null');
+        return json({ ...r, used: bag ? bag.used : false }); }
+      catch (e) { return json({ ok: false, error: String(e.message || e) }, 502); }
+    }
+    if (url.pathname === '/stripe/webhook' && req.method === 'POST') {
+      const body = await req.text();
+      const secret = await env.COINS.get('stripe_whsec');
+      if (!secret || !(await verifyStripeSignature(secret, req.headers.get('Stripe-Signature'), body))) return json({ error: 'Firma inválida' }, 400);
+      const ev = JSON.parse(body);
+      if (['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(ev.type)) ctx.waitUntil(processStripeSession(env, ev.data.object.id).catch(() => {}));
+      return json({ received: true });
+    }
+    // Registra el aviso de Stripe hacia este Worker (una sola vez, administrador)
+    if (url.pathname === '/admin/stripe/setup' && req.method === 'POST') {
+      if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);
+      const wh = await stripe(env, 'POST', 'webhook_endpoints', { url: `${url.origin}/stripe/webhook`, 'enabled_events[0]': 'checkout.session.completed', 'enabled_events[1]': 'checkout.session.async_payment_succeeded', description: 'Music Dance Worker' });
+      await env.COINS.put('stripe_whsec', wh.secret);
+      return json({ ok: true, webhook: wh.id, livemode: wh.livemode });
     }
 
     // Aviso de Odoo: un pedido cambió a confirmado
@@ -389,11 +531,87 @@ export default {
         return json({ ok: true, session, moved, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
       }
 
+      if (op === 'register') {
+        if (!(await ipLimit(env, req, 'acctnew', 5))) return json({ error: 'Demasiadas cuentas nuevas desde esta conexión. Prueba en una hora.' }, 429);
+        const email = normEmail(b.email), pw = String(b.password || '');
+        if (!validEmail(email)) return json({ error: 'Escribe un correo válido.' }, 400);
+        if (pw.length < 8) return json({ error: 'La contraseña debe tener al menos 8 caracteres.' }, 400);
+        const ek = await emailKey(email);
+        if (await env.COINS.get(ek)) return json({ error: 'Ya existe una cuenta con ese correo. Toca "Entrar".', exists: true }, 409);
+        const acct = { id: randomId(12), created: new Date().toISOString(), sessions: [], devices: [], email, pw: await hashPassword(pw) };
+        acct.codeKey = await familyKey(makeFamilyCode());   // código interno, ya no se muestra
+        await env.COINS.put(acct.codeKey, acct.id);
+        await env.COINS.put(ek, acct.id);
+        const session = await newSession(env, acct, b.device);
+        const moved = await mergeDeviceIntoAccount(env, b.device, `acct_${acct.id}`);
+        return json({ ok: true, session, email, moved, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+      }
+
+      if (op === 'login') {
+        if (!(await ipLimit(env, req, 'acctlogin', 15))) return json({ error: 'Demasiados intentos. Prueba en una hora.' }, 429);
+        const email = normEmail(b.email);
+        const id = await env.COINS.get(await emailKey(email));
+        const acct = id && JSON.parse((await env.COINS.get(`acct:${id}`)) || 'null');
+        const ok = acct && acct.pw && (await hashPassword(String(b.password || ''), acct.pw.salt)).hash === acct.pw.hash;
+        if (!ok) return json({ error: 'Correo o contraseña incorrectos.' }, 401);
+        const session = await newSession(env, acct, b.device);
+        const moved = await mergeDeviceIntoAccount(env, b.device, `acct_${acct.id}`);
+        return json({ ok: true, session, email: acct.email, moved, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+      }
+
+      if (op === 'forgot') {
+        // Siempre responde igual, exista o no la cuenta, para no revelar qué correos están registrados
+        if (!(await ipLimit(env, req, 'acctforgot', 5))) return json({ error: 'Demasiados intentos. Prueba en una hora.' }, 429);
+        const email = normEmail(b.email);
+        const id = validEmail(email) && await env.COINS.get(await emailKey(email));
+        if (id) {
+          const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+          await env.COINS.put(`reset:${id}`, JSON.stringify({ code, tries: 0 }), { expirationTtl: 60 * 30 });
+          ctx.waitUntil(sendMail(env, email, 'Tu código para cambiar la contraseña de Music Dance',
+            `<p>Tu código para cambiar la contraseña de Music Dance es:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px">${code}</p><p>Vence en 30 minutos. Si no lo pediste, ignora este correo.</p>`).catch(() => {}));
+        }
+        return json({ ok: true });
+      }
+
+      if (op === 'reset') {
+        if (!(await ipLimit(env, req, 'acctreset', 10))) return json({ error: 'Demasiados intentos. Prueba en una hora.' }, 429);
+        const email = normEmail(b.email), pw = String(b.password || '');
+        if (pw.length < 8) return json({ error: 'La contraseña debe tener al menos 8 caracteres.' }, 400);
+        const id = await env.COINS.get(await emailKey(email));
+        const rk = id && `reset:${id}`;
+        const r = rk && JSON.parse((await env.COINS.get(rk)) || 'null');
+        if (!r) return json({ error: 'El código venció o no es válido. Pide uno nuevo.' }, 400);
+        if (String(b.code || '').trim() !== r.code) {
+          r.tries++; if (r.tries >= 5) await env.COINS.delete(rk); else await env.COINS.put(rk, JSON.stringify(r), { expirationTtl: 60 * 30 });
+          return json({ error: 'Código incorrecto.' }, 400);
+        }
+        await env.COINS.delete(rk);
+        const acct = JSON.parse(await env.COINS.get(`acct:${id}`));
+        acct.pw = await hashPassword(pw);
+        const session = await newSession(env, acct, b.device);
+        return json({ ok: true, session, email: acct.email, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+      }
+
       const acct = await sessionAccount(env, b.session);
-      if (!acct) return json({ error: 'La sesión ya no es válida. Vuelve a entrar con tu código familiar.', noSession: true }, 401);
+      if (!acct) return json({ error: 'Tu sesión terminó. Vuelve a entrar con tu correo.', noSession: true }, 401);
+
+      if (op === 'set-email') {
+        // Cuentas antiguas (con código familiar) agregan correo y contraseña
+        const email = normEmail(b.email), pw = String(b.password || '');
+        if (!validEmail(email)) return json({ error: 'Escribe un correo válido.' }, 400);
+        if (pw.length < 8) return json({ error: 'La contraseña debe tener al menos 8 caracteres.' }, 400);
+        const ek = await emailKey(email);
+        const owner = await env.COINS.get(ek);
+        if (owner && owner !== acct.id) return json({ error: 'Ese correo ya tiene otra cuenta.' }, 409);
+        if (acct.email && acct.email !== email) await env.COINS.delete(await emailKey(acct.email));
+        acct.email = email; acct.pw = await hashPassword(pw);
+        await env.COINS.put(ek, acct.id);
+        await env.COINS.put(`acct:${acct.id}`, JSON.stringify(acct));
+        return json({ ok: true, email });
+      }
 
       if (op === 'me') {
-        return json({ ok: true, created: acct.created, devices: (acct.devices || []).length, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
+        return json({ ok: true, created: acct.created, email: acct.email || null, devices: (acct.devices || []).length, wallet: await walletView(env, `acct_${acct.id}`, FREE) });
       }
       if (op === 'logout') {
         const h = await sha256(b.session);
@@ -416,6 +634,7 @@ export default {
         if (b.confirm !== 'BORRAR') return json({ error: 'Falta confirmar' }, 400);
         for (const h of acct.sessions || []) await env.COINS.delete(`sess:${h}`);
         await env.COINS.delete(acct.codeKey);
+        if (acct.email) await env.COINS.delete(await emailKey(acct.email));
         await env.COINS.delete(`wallet:acct_${acct.id}`);
         await env.COINS.delete(`acct:${acct.id}`);
         return json({ ok: true, borrada: true });

@@ -1,0 +1,19 @@
+{
+  "name": "Music Dance",
+  "short_name": "Music Dance",
+  "description": "Escribe tu letra, escúchala cantada y báilala.",
+  "id": "/",
+  "start_url": "/?origen=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1a0b3d",
+  "theme_color": "#1a0b3d",
+  "lang": "es-MX",
+  "categories": ["music", "kids", "entertainment"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

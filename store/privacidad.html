@@ -19,7 +19,7 @@
 <p class="meta">Última actualización: <span class="pend">[FECHA DE PUBLICACIÓN]</span></p>
 
 <div class="box">
-<p><b>En resumen:</b> Music Dance es una app para niños. No pide nombre, correo, teléfono ni ubicación. No tiene anuncios, no usa herramientas de analítica de terceros y no rastrea a nadie entre apps o sitios. Solo usamos lo indispensable para crear canciones y llevar la cuenta de monedas.</p>
+<p><b>En resumen:</b> Music Dance es una app para niños. Solo pide el correo de un adulto si crea una cuenta familiar; no pide nombre, teléfono ni ubicación. No tiene anuncios, no usa herramientas de analítica de terceros y no rastrea a nadie entre apps o sitios. Solo usamos lo indispensable para crear canciones y llevar la cuenta de monedas.</p>
 </div>
 
 <h2>Quién es responsable</h2>
@@ -33,15 +33,15 @@
 <tr><td>Las canciones creadas, la coreografía y la biblioteca.</td><td>Que el niño pueda volver a escucharlas.</td><td>Se guardan solo en el dispositivo. Se borran al eliminar la canción o la app.</td></tr>
 <tr><td>La dirección IP de la conexión.</td><td>Evitar abusos, con límites de canciones por hora y por día.</td><td>Los contadores se borran solos entre 2 y 48 horas.</td></tr>
 <tr><td>Señales técnicas del navegador interno de la app.</td><td>Comprobar que quien usa la app es una persona y no un programa automático, mediante Cloudflare Turnstile.</td><td>Según la política de Cloudflare.</td></tr>
-<tr><td>Cuenta familiar opcional: un código secreto.</td><td>Conservar las monedas al reinstalar o al usar otro dispositivo. Guardamos solo una huella cifrada del código, nunca el código.</td><td>Hasta que se borre la cuenta desde la app.</td></tr>
-<tr><td>Compras dentro de la app.</td><td>Abonar las monedas compradas. El pago lo procesan Apple o Google; nosotros recibimos la confirmación de la compra, nunca los datos de la tarjeta.</td><td>Mientras exista la cuenta, y lo que exija la ley fiscal.</td></tr>
+<tr><td>Cuenta familiar opcional: el correo de un adulto y una contraseña.</td><td>Conservar las canciones al reinstalar o al usar otro dispositivo, y recuperar la contraseña. La contraseña se guarda cifrada de forma irreversible; nadie puede verla.</td><td>Hasta que se borre la cuenta desde la app.</td></tr>
+<tr><td>Compras dentro de la app.</td><td>Abonar las monedas compradas. El pago lo procesan Apple o Google; nosotros recibimos la confirmación de la compra y el correo del comprador, nunca los datos de la tarjeta.</td><td>Mientras exista la cuenta, y lo que exija la ley fiscal.</td></tr>
 </table>
 
 <h2>Niñas y niños</h2>
 <p>La app está pensada para niños y cumple con las leyes aplicables de protección de datos de menores, como la ley mexicana de protección de datos personales y la ley COPPA de Estados Unidos. No pedimos datos personales a los niños.</p>
 <ul>
 <li>Las compras, los enlaces hacia fuera de la app y la opción de compartir están protegidos por una puerta parental que debe resolver un adulto.</li>
-<li>La cuenta familiar la crea un adulto, detrás de esa misma puerta parental.</li>
+<li>La cuenta familiar la crea un adulto con su propio correo, detrás de esa misma puerta parental.</li>
 <li>Recomendamos que los niños no escriban nombres completos, direcciones, escuelas ni otros datos personales en sus letras.</li>
 <li>La app filtra palabras inapropiadas antes de crear una canción.</li>
 </ul>
@@ -51,7 +51,8 @@
 <ul>
 <li><b>ElevenLabs:</b> recibe la letra y genera la canción.</li>
 <li><b>Cloudflare:</b> aloja nuestro servidor y hace la verificación anti robots.</li>
-<li><b>Apple y Google:</b> procesan los pagos de las compras dentro de la app.</li>
+<li><b>Stripe:</b> procesa los pagos con tarjeta, Apple Pay y Google Pay.</li>
+<li><b>Odoo:</b> registra las ventas y envía los correos con los códigos.</li>
 </ul>
 
 <h2>Permisos del dispositivo</h2>
@@ -59,7 +60,7 @@
 
 <h2>Tus derechos y cómo borrar los datos</h2>
 <ul>
-<li><b>Borrar la cuenta familiar:</b> desde la app, en Conseguir más, Cuenta familiar, Borrar cuenta. Se eliminan la cuenta, el código y el saldo.</li>
+<li><b>Borrar la cuenta familiar:</b> desde la app, en Conseguir más, Cuenta familiar, Borrar cuenta. Se eliminan la cuenta, el correo, la contraseña y el saldo.</li>
 <li><b>Borrar las canciones:</b> desde la biblioteca de la app, o eliminando la app.</li>
 <li><b>Cualquier otra solicitud</b> de acceso, corrección, cancelación u oposición: escríbenos a <span class="pend">[CORREO DE CONTACTO]</span>. Respondemos en un máximo de 20 días hábiles.</li>
 </ul>

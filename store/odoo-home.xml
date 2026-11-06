@@ -55,12 +55,12 @@
      <h3 class="h4" t-out="p.name"/>
      <div class="md-price">$<t t-out="'%.0f' % p.list_price"/> <span style="font-size:16px">MXN</span></div>
      <p class="md-muted" t-out="p.description_sale or ''"/>
-     <a class="md-btn md-btn-y mt-2" t-att-href="p.website_url">Comprar</a>
+     <a class="md-btn md-btn-y mt-2" t-att-href="'https://mila-music.mp-music.workers.dev/buy?pack=%s' % p.default_code">Comprar</a>
     </div>
    </div>
   </t>
  </div>
- <p class="text-center md-muted mt-4">Pago seguro con tarjeta a través de Stripe. Al pagar recibes por correo tu código para canjear las canciones en la app.</p>
+ <p class="text-center md-muted mt-4">Pago seguro con tarjeta, Apple Pay o Google Pay a través de Stripe. Al pagar llegas directo a la app y tus canciones se guardan en tu cuenta. También te mandamos un correo de respaldo.</p>
 </div></section>
 
 <section class="py-5"><div class="container" style="max-width:820px">

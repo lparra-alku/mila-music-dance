@@ -211,6 +211,7 @@ async function processPaidOrder(env, orderId) {
 <p><a href="${link}">Toca aquí para abrir Music Dance y canjearlo</a>.</p>
 <p>Si ya tienes la app instalada: ábrela, toca <b>Conseguir más</b>, pide a un adulto resolver la pregunta, crea tu <b>cuenta familiar</b> si aún no la tienes y escribe el código en <b>¿Tienes un código de promoción?</b></p>
 <p>El código sirve una sola vez. Las canciones no caducan.</p>`;
+  await odoo(env, 'sale.order', 'write', [[orderId], { x_md_codigo: code }]); // lo muestra la página de confirmación del pago
   await odoo(env, 'sale.order', 'message_post', [[orderId]], { body, partner_ids: [o.partner_id[0]], message_type: 'comment', subtype_xmlid: 'mail.mt_comment' });
   return { ok: true, code, coins, order: o.name };
 }

@@ -13,6 +13,11 @@ REQUIRE_TURNSTILE = "1"     # pon "0" para desactivar la verificacion en una eme
 
 # Crear con:  npx wrangler kv namespace create COINS
 # y pegar el id que devuelve aquí:
+# Ventas con Odoo (la llave ODOO_API_KEY y ODOO_WEBHOOK_SECRET son secretos)
+ODOO_URL = "https://music-dance.odoo.com"
+ODOO_DB = "music-dance"
+ODOO_UID = "2"
+
 [[kv_namespaces]]
 binding = "COINS"
 id = "0b307345c5db4fb1acf7f693a166ad4d"

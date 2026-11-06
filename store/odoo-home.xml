@@ -1,0 +1,75 @@
+<t name="Home" t-name="website.homepage">
+<t t-call="website.layout">
+<t t-set="pageName" t-value="'homepage'"/>
+<div id="wrap" class="oe_structure md-wrap">
+<style>
+  .md-wrap{background:#1a0b3d;color:#f4f0ff}
+  .md-wrap h1,.md-wrap h2,.md-wrap h3{color:#fff}
+  .md-hero{background:radial-gradient(1200px 500px at 70% 0%,#7b4fff55,transparent),linear-gradient(160deg,#ff4fa3 0%,#7b4fff 55%,#1a0b3d 100%);padding:64px 0 72px}
+  .md-pill{display:inline-block;background:#ffd43b;color:#1a0b3d;font-weight:800;border-radius:999px;padding:4px 14px;font-size:14px}
+  .md-btn{display:inline-block;border-radius:16px;padding:14px 24px;font-weight:800;font-size:18px;text-decoration:none!important}
+  .md-btn-y{background:#ffd43b;color:#1a0b3d!important} .md-btn-o{border:2px solid #fff;color:#fff!important}
+  .md-card{background:#2b1466;border-radius:22px;padding:24px;height:100%}
+  .md-step{font-size:40px}
+  .md-pack{background:#2b1466;border-radius:22px;padding:26px;text-align:center;height:100%;border:3px solid transparent}
+  .md-pack.md-fav{border-color:#ffd43b}
+  .md-price{font-size:40px;font-weight:900;color:#ffd43b}
+  .md-muted{opacity:.75}
+  .md-img{width:100%;max-width:360px;border-radius:32px;box-shadow:0 30px 80px #0008}
+</style>
+
+<section class="md-hero">
+ <div class="container"><div class="row align-items-center g-5">
+  <div class="col-lg-7">
+   <span class="md-pill">Versión beta</span>
+   <h1 class="display-4 fw-bold mt-3">Escribe tu letra.<br/>Escúchala cantada.<br/>Báilala.</h1>
+   <p class="lead mt-3">Music Dance convierte las palabras de tus hijos en una canción de verdad, cantada por inteligencia artificial, con su propia coreografía. Diseñada por Mila, una niña de 7 años.</p>
+   <div class="d-flex flex-wrap gap-3 mt-4">
+    <a class="md-btn md-btn-y" href="#bolsas">Comprar canciones</a>
+    <a class="md-btn md-btn-o" href="https://lparra-alku.github.io/mila-music-dance/" target="_blank">Probar gratis</a>
+   </div>
+  </div>
+  <div class="col-lg-5 text-center">
+   <img class="md-img" src="/web/image/product.template/4/image_512" alt="Music Dance"/>
+  </div>
+ </div></div>
+</section>
+
+<section class="py-5"><div class="container">
+ <h2 class="text-center fw-bold mb-5">Así funciona</h2>
+ <div class="row g-4">
+  <div class="col-md-4"><div class="md-card"><div class="md-step">✍️</div><h3 class="h4 mt-2">1. Escribe</h3><p class="md-muted">Tu hijo escribe la letra que quiera y elige entre 15 estilos: pop, reggaetón, ranchera, mariachi, cumbia, banda y más.</p></div></div>
+  <div class="col-md-4"><div class="md-card"><div class="md-step">🎤</div><h3 class="h4 mt-2">2. Escucha</h3><p class="md-muted">La inteligencia artificial la canta con la voz que elija: niña, niño, mujer, hombre o coro.</p></div></div>
+  <div class="col-md-4"><div class="md-card"><div class="md-step">💃</div><h3 class="h4 mt-2">3. Baila y comparte</h3><p class="md-muted">Un bailarín sigue el ritmo con más de 25 pasos. Graba el video y compártelo con la familia.</p></div></div>
+ </div>
+</div></section>
+
+<section id="bolsas" class="py-5"><div class="container">
+ <h2 class="text-center fw-bold">Bolsas de canciones</h2>
+ <p class="text-center md-muted mb-5">Un solo pago, sin suscripciones. Las canciones no caducan. Además, cada día hay canciones gratis y el modo sin conexión es ilimitado.</p>
+ <div class="row g-4 justify-content-center">
+  <t t-foreach="request.env['product.template'].sudo().search([('default_code','=like','MD-BOLSA-%'),('is_published','=',True),('sale_ok','=',True)], order='list_price')" t-as="p">
+   <div class="col-md-4">
+    <div t-attf-class="md-pack #{'md-fav' if p.default_code == 'MD-BOLSA-60' else ''}">
+     <div t-if="p.default_code == 'MD-BOLSA-60'" class="md-pill mb-2">La favorita</div>
+     <h3 class="h4" t-out="p.name"/>
+     <div class="md-price">$<t t-out="'%.0f' % p.list_price"/> <span style="font-size:16px">MXN</span></div>
+     <p class="md-muted" t-out="p.description_sale or ''"/>
+     <a class="md-btn md-btn-y mt-2" t-att-href="p.website_url">Comprar</a>
+    </div>
+   </div>
+  </t>
+ </div>
+ <p class="text-center md-muted mt-4">Pago seguro con Mercado Pago. Al pagar recibes por correo tu código para canjear las canciones en la app.</p>
+</div></section>
+
+<section class="py-5"><div class="container" style="max-width:820px">
+ <h2 class="text-center fw-bold mb-4">Preguntas frecuentes</h2>
+ <div class="md-card mb-3"><h3 class="h5">¿Cómo recibo mis canciones?</h3><p class="md-muted mb-0">Al pagar te llega un correo con un código y un enlace. En la app toca <b>Conseguir más</b>, crea tu cuenta familiar gratis y escribe el código. Las canciones quedan en tu cuenta aunque borres la app o cambies de dispositivo.</p></div>
+ <div class="md-card mb-3"><h3 class="h5">¿En qué dispositivos funciona?</h3><p class="md-muted mb-0">En iPad, iPhone, Android y computadora, desde el navegador. En el iPad o el teléfono puedes agregarla a la pantalla de inicio para usarla como una app.</p></div>
+ <div class="md-card mb-3"><h3 class="h5">¿Es segura para niños?</h3><p class="md-muted mb-0">No tiene anuncios ni pide datos personales. Las compras y la opción de compartir están protegidas con una pregunta que solo un adulto puede resolver, y hay un filtro de palabras inapropiadas.</p></div>
+ <div class="md-card mb-3"><h3 class="h5">¿Qué significa que sea beta?</h3><p class="md-muted mb-0">Es una versión de prueba: puede tener fallas y seguimos mejorándola con tus comentarios. Las canciones que compres se respetan en la versión final.</p></div>
+</div></section>
+</div>
+</t>
+</t>

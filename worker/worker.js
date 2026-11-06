@@ -158,6 +158,63 @@ async function ipLimit(env, req, name, max) {
   return true;
 }
 
+/* ===================== VENTAS CON ODOO =====================
+ * Odoo avisa (webhook) cuando un pedido se confirma. El Worker NO confía en el aviso:
+ * relee el pedido en Odoo con su propia llave, exige un pago con estado "hecho" que cubra
+ * el total, y solo entonces crea un código BOLSA de un solo uso y se lo manda al cliente
+ * con un mensaje en el pedido (Odoo lo envía por correo).
+ */
+async function odoo(env, model, method, args, kw = {}) {
+  const r = await fetch(`${env.ODOO_URL}/jsonrpc`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { service: 'object', method: 'execute_kw',
+      args: [env.ODOO_DB, parseInt(env.ODOO_UID, 10), env.ODOO_API_KEY, model, method, args, kw] } }),
+  });
+  const j = await r.json();
+  if (j.error) throw new Error((j.error.data && j.error.data.message) || j.error.message);
+  return j.result;
+}
+function makeBagCode() {
+  const r = crypto.getRandomValues(new Uint8Array(8));
+  const c = [...r].map(b => CODE_ABC[b % CODE_ABC.length]).join('');
+  return `BOLSA-${c.slice(0, 4)}-${c.slice(4, 8)}`;
+}
+const APP_URL = 'https://lparra-alku.github.io/mila-music-dance/';
+async function processPaidOrder(env, orderId) {
+  const done = await env.COINS.get(`order:${orderId}`);
+  if (done) return { ok: true, yaProcesado: true, code: done };
+  let o = null, paid = false;
+  // Odoo puede avisar un instante antes de terminar de guardar el pago: reintenta unos segundos
+  for (let i = 0; i < 6 && !paid; i++) {
+    if (i) await new Promise(r => setTimeout(r, 2500));
+    [o] = await odoo(env, 'sale.order', 'read', [[orderId]], { fields: ['name', 'state', 'amount_total', 'partner_id', 'order_line', 'transaction_ids', 'currency_id'] });
+    if (!o || !['sale', 'done'].includes(o.state)) continue;
+    const txs = o.transaction_ids.length ? await odoo(env, 'payment.transaction', 'read', [o.transaction_ids], { fields: ['state', 'amount'] }) : [];
+    const cobrado = txs.filter(t => t.state === 'done').reduce((a, t) => a + t.amount, 0);
+    paid = cobrado + 0.01 >= o.amount_total && o.amount_total > 0;
+  }
+  if (!paid) return { ok: false, motivo: 'pedido sin pago confirmado' };
+  const lines = await odoo(env, 'sale.order.line', 'read', [o.order_line], { fields: ['product_id', 'product_uom_qty'] });
+  const prodIds = [...new Set(lines.filter(l => l.product_id).map(l => l.product_id[0]))];
+  const prods = prodIds.length ? await odoo(env, 'product.product', 'read', [prodIds], { fields: ['default_code'] }) : [];
+  const codeOf = Object.fromEntries(prods.map(p => [p.id, p.default_code || '']));
+  let coins = 0;
+  for (const l of lines) { const m = /^MD-BOLSA-(\d+)$/.exec(codeOf[l.product_id && l.product_id[0]] || ''); if (m) coins += parseInt(m[1], 10) * Math.round(l.product_uom_qty); }
+  if (!coins) return { ok: false, motivo: 'el pedido no tiene bolsas de canciones' };
+  const code = makeBagCode();
+  await env.COINS.put(`bag:${code}`, JSON.stringify({ coins, order: o.name, orderId, created: new Date().toISOString(), used: false }));
+  await env.COINS.put(`order:${orderId}`, code);
+  const link = `${APP_URL}?codigo=${code}`;
+  const body = `<p>¡Gracias por tu compra! 🎶</p>
+<p>Tu código para <b>${coins} canciones</b> en Music Dance es:</p>
+<p style="font-size:22px;font-weight:bold;letter-spacing:2px">${code}</p>
+<p><a href="${link}">Toca aquí para abrir Music Dance y canjearlo</a>.</p>
+<p>Si ya tienes la app instalada: ábrela, toca <b>Conseguir más</b>, pide a un adulto resolver la pregunta, crea tu <b>cuenta familiar</b> si aún no la tienes y escribe el código en <b>¿Tienes un código de promoción?</b></p>
+<p>El código sirve una sola vez. Las canciones no caducan.</p>`;
+  await odoo(env, 'sale.order', 'message_post', [[orderId]], { body, partner_ids: [o.partner_id[0]], message_type: 'comment', subtype_xmlid: 'mail.mt_comment' });
+  return { ok: true, code, coins, order: o.name };
+}
+
 const cleanCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 32);
 const cleanUid = (v) => String(v || 'anon').replace(/[^A-Za-z0-9_\-:.]/g, '').slice(0, 64) || 'anon';
 
@@ -209,7 +266,7 @@ function buildPlan(lyrics, style, bpm, seconds, voice) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const origin = req.headers.get('Origin') || '';
     CORS = baseCors(origin);
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -240,6 +297,26 @@ export default {
       await saveWallet(env, uid, w);
       await env.COINS.put(`grant:${ref}`, uid);
       return json({ ok: true, ...(await walletView(env, uid, FREE)) });
+    }
+
+    // Aviso de Odoo: un pedido cambió a confirmado
+    if (url.pathname === '/odoo/paid' && req.method === 'POST') {
+      if (!env.ODOO_WEBHOOK_SECRET || url.searchParams.get('t') !== env.ODOO_WEBHOOK_SECRET) return json({ error: 'No autorizado' }, 401);
+      const b = await req.json().catch(() => ({}));
+      const orderId = parseInt(b._id || b.id, 10);
+      if (!orderId) return json({ error: 'Falta el pedido' }, 400);
+      // Responde de inmediato a Odoo y procesa en segundo plano (con reintentos)
+      ctx.waitUntil(processPaidOrder(env, orderId).then(async (res) => {
+        if (!res.ok) await env.COINS.put(`ordererr:${orderId}`, JSON.stringify({ when: new Date().toISOString(), ...res }), { expirationTtl: 60 * 60 * 24 * 30 });
+      }).catch(async (e) => { await env.COINS.put(`ordererr:${orderId}`, JSON.stringify({ when: new Date().toISOString(), error: String(e) }), { expirationTtl: 60 * 60 * 24 * 30 }); }));
+      return json({ ok: true, recibido: orderId });
+    }
+    // Reprocesar un pedido a mano (administrador), por ejemplo si el correo no salió
+    if (url.pathname === '/odoo/process' && req.method === 'POST') {
+      if (!env.ADMIN_KEY || req.headers.get('X-Admin-Key') !== env.ADMIN_KEY) return json({ error: 'No autorizado' }, 401);
+      const b = await req.json().catch(() => ({}));
+      try { return json(await processPaidOrder(env, parseInt(b.orderId, 10))); }
+      catch (e) { return json({ ok: false, error: String(e) }, 500); }
     }
 
     // ---- Cuenta familiar ----
@@ -341,6 +418,19 @@ export default {
       const b = await req.json().catch(() => ({}));
       const uid = await resolveUid(env, b.uid, b.session), code = cleanCode(b.code);
       if (uid === 'anon' || !code) return json({ error: 'Escribe el código' }, 400);
+      // Bolsa de canciones comprada: un solo uso, suma monedas compradas
+      const bag = JSON.parse((await env.COINS.get(`bag:${code}`)) || 'null');
+      if (bag) {
+        if (!uid.startsWith('acct_')) return json({ error: 'Primero crea tu cuenta familiar (arriba, es gratis) para no perder tus canciones si borras la app.', needAccount: true }, 409);
+        if (bag.used) return json({ error: bag.usedBy === uid ? 'Ya canjeaste este código.' : 'Este código ya se canjeó.' }, 410);
+        bag.used = true; bag.usedBy = uid; bag.usedAt = new Date().toISOString();
+        await env.COINS.put(`bag:${code}`, JSON.stringify(bag));
+        const w = await getWallet(env, uid);
+        w.paid += bag.coins;
+        w.log.push({ t: new Date().toISOString(), delta: bag.coins, why: `bolsa ${bag.order}`, ref: code });
+        await saveWallet(env, uid, w);
+        return json({ ok: true, bag: bag.coins, ...(await walletView(env, uid, FREE)) });
+      }
       const promo = JSON.parse((await env.COINS.get(`promo:${code}`)) || 'null');
       if (!promo || !promo.active) return json({ error: 'Ese código no existe o ya no está activo.' }, 404);
       const w = await getWallet(env, uid);

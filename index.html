@@ -398,8 +398,11 @@ async function redeemPromo(){
   try{
     const r=await fetch(`${WORKER_URL}/promo/redeem`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid:DEVICE_ID,code,session:SESSION})});
     const j=await r.json();
-    if(!r.ok){ msg.textContent='😕 '+(j.error||'No se pudo canjear'); return; }
+    if(!r.ok){ msg.textContent='😕 '+(j.error||'No se pudo canjear');
+      if(j.needAccount){ $('famBox').scrollIntoView({behavior:'smooth',block:'center'}); $('famBox').style.outline='3px solid var(--accent2)'; setTimeout(()=>$('famBox').style.outline='',4000); }
+      return; }
     showWallet(j);
+    if(j.bag){ msg.textContent=`🎉 ¡Listo! Se sumaron ${j.bag} canciones a tu cuenta familiar. No caducan.`; $('promoInput').value=''; return; }
     msg.textContent = j.yaTenias ? `✅ Ya tenías este código: ${j.promo.daily} canciones gratis cada día.` : `🎉 ¡Listo! Ahora tienes ${j.promo.daily} canciones gratis cada día${j.promo.until?' hasta el '+new Date(j.promo.until).toLocaleDateString('es-MX'):''}.`;
     $('promoInput').value='';
   }catch(e){ msg.textContent='Sin conexión. Inténtalo de nuevo.'; }
@@ -908,6 +911,11 @@ $('famCreate').onclick=famCreate; $('famLink').onclick=famLink; $('famRotate').o
 $('famCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText($('famCode').textContent); $('famMsg').textContent='📋 Código copiado.'; }catch{ $('famMsg').textContent='Mantén presionado el código para copiarlo.'; } };
 $('shopClose').onclick=()=>{ $('shopModal').hidden=true; };
 refreshCoins(); renderLibrary(); tsReady();
+(()=>{ try{ const c=new URLSearchParams(location.search).get('codigo'); if(!c) return;
+  history.replaceState(null,'',location.pathname);
+  setTimeout(async()=>{ await openShop(); if(!$('shopModal').hidden){ $('promoInput').value=c;
+    $('promoMsg').textContent = SESSION ? 'Toca Canjear para sumar tus canciones.' : 'Primero crea tu cuenta familiar (es gratis) y luego toca Canjear.'; } },600);
+}catch(e){} })();
 $('btnRandom').onclick=()=>{ if(!song)return; autoChoreo(Math.floor(Math.random()*1e9)); };
 $('btnPlay0').onclick=$('btnPlay1').onclick=()=>{ play(); setStatusUI(); };
 $('btnStop0').onclick=$('btnStop1').onclick=()=>stop();
